@@ -336,7 +336,6 @@ insert into public.avatar_items (slug, name, category, icon, rarity, price_coins
   ('face_alien',      'Alienígena',     'face',      '👽', 'epic',      300, 10, false),
   ('face_crown',      'Realeza',        'face',      '🫅', 'legendary', 600, 20, false),
   ('acc_glasses',     'Óculos',         'accessory', '👓', 'common',    80,  3,  false),
-  ('acc_sunglasses',  'Óculos escuros', 'accessory', '🕶️', 'common',    80,  3,  false),
   ('acc_hat',         'Chapéu',         'accessory', '🎩', 'rare',      180, 7,  false),
   ('acc_crown',       'Coroa',          'accessory', '👑', 'epic',      350, 15, false),
   ('acc_halo',        'Halo',           'accessory', '😇', 'legendary', 700, 25, false),

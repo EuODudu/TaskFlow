@@ -50,7 +50,7 @@ const ACCESSORY_SLOT_FILTERS: { key: AccessorySlot | "all"; label: string }[] = 
 
 type ParticleData = { id: number; x: number; y: number; color: string };
 
-const HIDDEN_STORE_SLUGS = new Set(["acc_none"]);
+const HIDDEN_STORE_SLUGS = new Set(["acc_none", "acc_sunglasses"]);
 
 function StorePage() {
   const { user } = useAuth();

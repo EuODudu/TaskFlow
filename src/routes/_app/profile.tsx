@@ -71,6 +71,8 @@ const HAIR_STYLES = [
   { label: "Formal", value: "formal" },
 ];
 
+const HIDDEN_INVENTORY_SLUGS = new Set(["acc_sunglasses"]);
+
 function ProfilePage() {
   const { user } = useAuth();
   const { data: profile } = useProfile(user?.id);
@@ -88,7 +90,7 @@ function ProfilePage() {
   const collectionBonus = getCollectionBonus(equippedSlugs);
   const accessorySlots = resolveAvatarAccessories(avatar);
   const activeOfficeTheme = officeRows.find((row) => row.item?.category === "office_theme")?.item;
-  const ownedItems = allItems.filter((item) => item.is_default || ownedIds.includes(item.id));
+  const ownedItems = allItems.filter((item) => (item.is_default || ownedIds.includes(item.id)) && !HIDDEN_INVENTORY_SLUGS.has(item.slug));
 
   const xp = profile?.xp ?? 0;
   const level = getLevelFromXP(xp);

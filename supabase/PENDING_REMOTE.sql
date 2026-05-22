@@ -21,6 +21,9 @@ ALTER TABLE public.user_avatar
   ADD COLUMN IF NOT EXISTS skin_tone       TEXT NOT NULL DEFAULT '#FDBCB4',
   ADD COLUMN IF NOT EXISTS clothes_color   TEXT NOT NULL DEFAULT '#3b82f6';
 
+-- Remove duplicado legado de óculos; o item mantido é acc_glasses.
+DELETE FROM public.avatar_items WHERE slug = 'acc_sunglasses';
+
 -- Auras com textos revisados
 INSERT INTO public.avatar_items
   (slug, name, category, icon, unlock_level, price_coins, is_default, rarity, description, color_hint)
