@@ -15,7 +15,11 @@ ALTER TABLE public.user_avatar
   ADD COLUMN IF NOT EXISTS accessory_hand  TEXT,
   ADD COLUMN IF NOT EXISTS accessory_chest TEXT,
   ADD COLUMN IF NOT EXISTS aura_emoji      TEXT,
-  ADD COLUMN IF NOT EXISTS pose            TEXT NOT NULL DEFAULT 'idle';
+  ADD COLUMN IF NOT EXISTS pose            TEXT NOT NULL DEFAULT 'idle',
+  ADD COLUMN IF NOT EXISTS hair_style      TEXT NOT NULL DEFAULT 'casual',
+  ADD COLUMN IF NOT EXISTS hair_color      TEXT NOT NULL DEFAULT '#5D3A1A',
+  ADD COLUMN IF NOT EXISTS skin_tone       TEXT NOT NULL DEFAULT '#FDBCB4',
+  ADD COLUMN IF NOT EXISTS clothes_color   TEXT NOT NULL DEFAULT '#3b82f6';
 
 -- Auras com textos revisados
 INSERT INTO public.avatar_items
