@@ -4,12 +4,17 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import {
   useProfile, useUserBadges, useBadges, useUserAvatar, useAvatarItems,
-  useXpEvents, useInvalidate, type UserAvatar,
+  useUserInventory, useOfficeItems, useXpEvents, useInvalidate,
+  type AvatarItem, type UserAvatar,
 } from "@/lib/queries";
 import {
+  buildEquipPayload,
   getCollectionBonus,
+  getItemCollection,
   getEquippedSlugs,
   getHighestEquippedRarity,
+  getAccessorySlot,
+  isAvatarItemEquipped,
   POSE_OPTIONS,
   resolveAvatarAccessories,
   ACCESSORY_SLOT_LABELS,
@@ -24,10 +29,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar2D } from "@/components/gamification/avatar-2d";
+import { FurnitureSVG } from "@/components/gamification/furniture-sprites";
 import { LevelBadge } from "@/components/gamification/level-badge";
 import { XPBar } from "@/components/gamification/xp-bar";
 import { RarityBadge, RARITY_STYLES, type ExtendedRarity } from "@/components/gamification/rarity-frame";
-import { Flame, Coins, Edit2, Check, X, ChevronRight, Trophy, Zap, Clock, Sparkles, Palette } from "lucide-react";
+import { Flame, Coins, Edit2, Check, X, ChevronRight, Trophy, Zap, Clock, Package, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -72,6 +78,8 @@ function ProfilePage() {
   const { data: allBadges = [] } = useBadges();
   const { data: avatar } = useUserAvatar(user?.id);
   const { data: allItems = [] } = useAvatarItems();
+  const { data: ownedIds = [] } = useUserInventory(user?.id);
+  const { data: officeRows = [] } = useOfficeItems(user?.id);
   const { data: xpEvents = [] } = useXpEvents(user?.id);
   const inv = useInvalidate();
 
@@ -79,6 +87,8 @@ function ProfilePage() {
   const highlightRarity = getHighestEquippedRarity(equippedSlugs, allItems);
   const collectionBonus = getCollectionBonus(equippedSlugs);
   const accessorySlots = resolveAvatarAccessories(avatar);
+  const activeOfficeTheme = officeRows.find((row) => row.item?.category === "office_theme")?.item;
+  const ownedItems = allItems.filter((item) => item.is_default || ownedIds.includes(item.id));
 
   const xp = profile?.xp ?? 0;
   const level = getLevelFromXP(xp);
@@ -92,8 +102,79 @@ function ProfilePage() {
   const totalPomodoro = xpEvents.filter((e) => e.reason === "pomodoro_session").length;
 
   const [editingAvatar, setEditingAvatar] = useState(false);
+  const [pageTab, setPageTab] = useState<"overview" | "inventory">("overview");
   const [activeTab, setActiveTab] = useState<"sex" | "skin" | "hairColor" | "hairStyle" | "pose">("sex");
   const [draft, setDraft] = useState<Partial<UserAvatar> & { skin_tone?: string; hair_color?: string; hair_style?: string; pose?: string }>({});
+
+  const isEquipableInventoryItem = (item: AvatarItem) =>
+    ["face", "outfit", "accessory", "aura", "pet", "office_theme", "office_item"].includes(item.category);
+
+  const isInventoryItemEquipped = (item: AvatarItem) => {
+    if (item.category === "office_theme") return (activeOfficeTheme?.slug ?? "office_theme_classic") === item.slug;
+    if (item.category === "office_item") return officeRows.some((row) => row.item_id === item.id);
+    return isAvatarItemEquipped(avatar ?? null, item);
+  };
+
+  const equipInventoryItem = async (item: AvatarItem) => {
+    if (!user || !isEquipableInventoryItem(item)) return;
+
+    if (item.category === "office_item") {
+      const placedOfSameItem = officeRows.find((row) => row.item_id === item.id);
+      if (placedOfSameItem) {
+        toast.info("Esse item já está no escritório.");
+        return;
+      }
+
+      const { error } = await (supabase as any).from("office_items").insert({
+        user_id: user.id,
+        item_id: item.id,
+        grid_x: 0,
+        grid_y: 4,
+        rotation: 0,
+      });
+      if (error) return toast.error(error.message);
+
+      inv.officeItems(user.id);
+      toast.success(`${item.name} adicionado ao escritório!`);
+      return;
+    }
+
+    if (item.category === "office_theme") {
+      const existingThemeIds = officeRows
+        .filter((row) => row.item?.category === "office_theme")
+        .map((row) => row.id);
+
+      if (existingThemeIds.length > 0) {
+        const { error: deleteError } = await (supabase as any)
+          .from("office_items")
+          .delete()
+          .in("id", existingThemeIds);
+        if (deleteError) return toast.error(deleteError.message);
+      }
+
+      if (item.slug !== "office_theme_classic") {
+        const { error: insertError } = await (supabase as any).from("office_items").insert({
+          user_id: user.id,
+          item_id: item.id,
+          grid_x: -1,
+          grid_y: -1,
+          rotation: 0,
+        });
+        if (insertError) return toast.error(insertError.message);
+      }
+
+      inv.officeItems(user.id);
+      toast.success(`${item.name} aplicado no escritório!`);
+      return;
+    }
+
+    const payload = buildEquipPayload(user.id, item, avatar ?? null);
+    const { error } = await (supabase as any).from("user_avatar").upsert(payload, { onConflict: "user_id" });
+    if (error) return toast.error(error.message);
+
+    inv.userAvatar(user.id);
+    toast.success(`${item.name} equipado!`);
+  };
 
   const openEdit = () => {
     const currentFace = (avatar as any)?.face_emoji;
@@ -173,6 +254,32 @@ function ProfilePage() {
         <p className="text-sm text-muted-foreground">Progresso, visual e conquistas sem excesso.</p>
       </div>
 
+      <div className="flex flex-wrap gap-2 rounded-2xl border bg-muted/25 p-1">
+        {[
+          { key: "overview", label: "Visão geral", icon: Sparkles },
+          { key: "inventory", label: "Inventário", icon: Package },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setPageTab(tab.key as "overview" | "inventory")}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all",
+                pageTab === tab.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {pageTab === "overview" ? (
+        <>
       {/* Hero card */}
       <Card className="relative overflow-hidden border-border/70 bg-card p-0 shadow-sm">
         <div
@@ -548,6 +655,18 @@ function ProfilePage() {
           </div>
         </Card>
       )}
+        </>
+      ) : (
+        <InventoryTab
+          avatar={avatar ?? null}
+          items={ownedItems}
+          equippedSlugs={equippedSlugs}
+          highlightRarity={highlightRarity}
+          isEquipped={isInventoryItemEquipped}
+          isEquipable={isEquipableInventoryItem}
+          onEquip={equipInventoryItem}
+        />
+      )}
     </div>
   );
 }
@@ -566,6 +685,240 @@ const REASON_LABEL: Record<string, string> = {
   badge_earned:     "Conquista desbloqueada",
   streak_bonus:     "Bônus de streak",
 };
+
+type InventoryCategory = "all" | "face" | "outfit" | "accessory" | "aura" | "pet" | "office_item" | "office_theme";
+
+const INVENTORY_CATEGORIES: { key: InventoryCategory; label: string }[] = [
+  { key: "all", label: "Tudo" },
+  { key: "face", label: "Personagens" },
+  { key: "outfit", label: "Roupas" },
+  { key: "accessory", label: "Acessórios" },
+  { key: "aura", label: "Auras" },
+  { key: "pet", label: "Pets" },
+  { key: "office_item", label: "Escritório" },
+  { key: "office_theme", label: "Temas" },
+];
+
+const CATEGORY_LABEL: Record<string, string> = {
+  face: "Personagem",
+  outfit: "Roupa",
+  accessory: "Acessório",
+  aura: "Aura",
+  pet: "Pet",
+  office_item: "Item de escritório",
+  office_theme: "Tema do escritório",
+};
+
+function InventoryTab({
+  avatar,
+  items,
+  equippedSlugs,
+  highlightRarity,
+  isEquipped,
+  isEquipable,
+  onEquip,
+}: {
+  avatar: UserAvatar | null;
+  items: AvatarItem[];
+  equippedSlugs: string[];
+  highlightRarity: ExtendedRarity;
+  isEquipped: (item: AvatarItem) => boolean;
+  isEquipable: (item: AvatarItem) => boolean;
+  onEquip: (item: AvatarItem) => void;
+}) {
+  const [category, setCategory] = useState<InventoryCategory>("all");
+  const filtered = category === "all" ? items : items.filter((item) => item.category === category);
+
+  const counts = items.reduce<Record<string, number>>((acc, item) => {
+    acc[item.category] = (acc[item.category] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <Card className="overflow-hidden border-border/70 bg-card p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inventário</p>
+          <h2 className="text-2xl font-bold tracking-tight">Itens adquiridos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Equipe acessórios, pets, auras, roupas, personagens e itens de escritório sem sair do perfil.
+          </p>
+        </div>
+        <div className="rounded-full border bg-muted/35 px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+          {items.length} item(ns)
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {INVENTORY_CATEGORIES.map((tab) => {
+          const total = tab.key === "all" ? items.length : (counts[tab.key] ?? 0);
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setCategory(tab.key)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
+                category === tab.key
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground",
+              )}
+            >
+              {tab.label}
+              <span className="ml-1 opacity-70">{total}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="py-16 text-center text-sm text-muted-foreground">
+          Nenhum item nessa categoria ainda. Compre na loja para aparecer aqui.
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((item) => (
+            <InventoryItemCard
+              key={item.id}
+              item={item}
+              avatar={avatar}
+              equipped={isEquipped(item)}
+              equipable={isEquipable(item)}
+              equippedSlugs={equippedSlugs}
+              highlightRarity={highlightRarity}
+              onEquip={() => onEquip(item)}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function InventoryItemCard({
+  item,
+  avatar,
+  equipped,
+  equipable,
+  equippedSlugs,
+  highlightRarity,
+  onEquip,
+}: {
+  item: AvatarItem;
+  avatar: UserAvatar | null;
+  equipped: boolean;
+  equipable: boolean;
+  equippedSlugs: string[];
+  highlightRarity: ExtendedRarity;
+  onEquip: () => void;
+}) {
+  const rarity = (item.rarity ?? "common") as ExtendedRarity;
+  const rarityStyle = RARITY_STYLES[rarity] ?? RARITY_STYLES.common;
+  const collection = getItemCollection(item);
+  const slot = item.category === "accessory" ? getAccessorySlot(item) : null;
+  const basePreview = avatar
+    ? { ...avatar, user_id: avatar.user_id ?? "", updated_at: avatar.updated_at ?? "" }
+    : {
+        face_emoji: "🧑",
+        bg_color: "#6366f1",
+        clothes_color: "#3b82f6",
+        accessory_emoji: null,
+        pet_emoji: null,
+        user_id: "",
+        updated_at: "",
+      };
+
+  const previewAvatar =
+    item.category === "face"
+      ? { ...basePreview, face_emoji: item.icon }
+      : item.category === "outfit"
+        ? { ...basePreview, bg_color: item.icon, clothes_color: item.icon }
+        : item.category === "accessory" && slot && slot !== "aura"
+          ? { ...basePreview, accessory_emoji: null, [`accessory_${slot}`]: item.slug === "acc_none" ? null : item.icon }
+          : item.category === "aura"
+            ? { ...basePreview, aura_emoji: item.slug === "aura_none" ? null : item.icon }
+            : item.category === "pet"
+              ? { ...basePreview, pet_emoji: item.slug === "pet_none" ? null : item.icon }
+              : null;
+
+  const actionLabel =
+    item.category === "office_item"
+      ? equipped
+        ? "No escritório"
+        : "Colocar"
+      : equipped
+        ? "Equipado"
+        : "Equipar";
+
+  return (
+    <div className={cn("rounded-2xl border bg-background/45 p-4 shadow-sm", rarityStyle.border)}>
+      <div className="flex gap-3">
+        <div
+          className="grid size-20 shrink-0 place-items-center rounded-2xl border bg-muted/30"
+          style={{ borderColor: `${rarityStyle.color}35` }}
+        >
+          {previewAvatar ? (
+            <Avatar2D
+              avatar={previewAvatar as UserAvatar}
+              size="md"
+              animate={false}
+              equippedSlugs={equippedSlugs}
+              highlightRarity={highlightRarity}
+              className="scale-110"
+            />
+          ) : item.category === "office_item" || item.category === "office_theme" ? (
+            <FurnitureSVG item={item} size={52} />
+          ) : (
+            <span className="text-4xl">{item.icon}</span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold">{item.name}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {item.category === "accessory" && slot && slot !== "aura"
+                  ? `${CATEGORY_LABEL[item.category]} · ${ACCESSORY_SLOT_LABELS[slot]}`
+                  : CATEGORY_LABEL[item.category] ?? item.category}
+              </p>
+            </div>
+            {equipped && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                Ativo
+              </span>
+            )}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <RarityBadge rarity={rarity} />
+            {collection && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                style={{ color: collection.tone, backgroundColor: `${collection.tone}1f` }}
+              >
+                {collection.label}
+              </span>
+            )}
+          </div>
+
+          {item.description && (
+            <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">{item.description}</p>
+          )}
+        </div>
+      </div>
+
+      <Button
+        size="sm"
+        variant={equipped ? "secondary" : "default"}
+        className="mt-4 w-full"
+        disabled={!equipable || equipped}
+        onClick={onEquip}
+      >
+        {equipable ? actionLabel : "Adquirido"}
+      </Button>
+    </div>
+  );
+}
 
 function StatPill({ icon, value, label }: { icon: React.ReactNode; value: string | number; label: string }) {
   return (
