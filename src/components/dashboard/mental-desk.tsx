@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -178,14 +179,14 @@ export function MentalDesk({ userId }: Props) {
     const { data: createdNote, error } = await supabase
       .from("mental_notes")
       .insert({
-      user_id: userId,
-      title: title.trim() || "Nova nota",
-      content: content.trim() || null,
-      note_type: type,
-      priority: type === "urgent" ? "urgent" : type === "priority" ? "high" : "medium",
-      x: position.x,
-      y: position.y,
-      rotation: position.rotation,
+        user_id: userId,
+        title: title.trim() || "Nova nota",
+        content: content.trim() || null,
+        note_type: type,
+        priority: type === "urgent" ? "urgent" : type === "priority" ? "high" : "medium",
+        x: position.x,
+        y: position.y,
+        rotation: position.rotation,
       })
       .select("*")
       .single();
@@ -206,6 +207,7 @@ export function MentalDesk({ userId }: Props) {
       }));
     }
 
+    setFilterType("all");
     closeComposer();
     toast.success("Nota fixada na Mesa Mental.");
   };
@@ -654,6 +656,16 @@ function BoardNote({
   const resolvedX = position?.x ?? (Number(note.x) > 0 || Number(note.y) > 0 ? note.x : spawn.x);
   const resolvedY = position?.y ?? (Number(note.x) > 0 || Number(note.y) > 0 ? note.y : spawn.y);
   const [coords, setCoords] = useState({ x: resolvedX, y: resolvedY });
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startPointerX: number;
+    startPointerY: number;
+    startX: number;
+    startY: number;
+    maxX: number;
+    maxY: number;
+    moved: boolean;
+  } | null>(null);
   const isUrgent = note.note_type === "urgent" || note.priority === "urgent";
 
   useEffect(() => {
@@ -753,19 +765,65 @@ function BoardNote({
       }
     : undefined;
 
-  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent) => {
+  const clampCoords = (nextX: number, nextY: number, maxX: number, maxY: number) => ({
+    x: Math.min(maxX, Math.max(0, Math.round(nextX))),
+    y: Math.min(maxY, Math.max(0, Math.round(nextY))),
+  });
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging || discarding || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select")) return;
+
     const board = boardRef?.current;
     if (!board) return;
 
     const boardRect = board.getBoundingClientRect();
-    const noteRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const noteRect = event.currentTarget.getBoundingClientRect();
     const maxX = Math.max(0, Math.round(boardRect.width - noteRect.width));
     const maxY = Math.max(0, Math.round(boardRect.height - noteRect.height));
-    const nextX = Math.min(maxX, Math.max(0, Math.round(noteRect.left - boardRect.left)));
-    const nextY = Math.min(maxY, Math.max(0, Math.round(noteRect.top - boardRect.top)));
 
-    setCoords({ x: nextX, y: nextY });
-    onDragEnd?.(nextX, nextY);
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      startX: coords.x,
+      startY: coords.y,
+      maxX,
+      maxY,
+      moved: false,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragState.startPointerX;
+    const deltaY = event.clientY - dragState.startPointerY;
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) dragState.moved = true;
+
+    setCoords(clampCoords(dragState.startX + deltaX, dragState.startY + deltaY, dragState.maxX, dragState.maxY));
+  };
+
+  const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - dragState.startPointerX;
+    const deltaY = event.clientY - dragState.startPointerY;
+    const nextCoords = clampCoords(dragState.startX + deltaX, dragState.startY + deltaY, dragState.maxX, dragState.maxY);
+
+    dragStateRef.current = null;
+    setCoords(nextCoords);
+    onDragEnd?.(nextCoords.x, nextCoords.y);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   if (!dragging) {
@@ -786,18 +844,16 @@ function BoardNote({
 
   return (
     <motion.div
-      drag
-      dragMomentum={false}
-      dragElastic={0.02}
-      dragConstraints={boardRef}
       initial={{ opacity: 0, scale: 0.94 }}
-      animate={discardAnimation ?? { opacity: 1, scale: 1, x: 0, y: 0 }}
+      animate={discardAnimation ?? { opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
       transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "tween", duration: 0.15 }}
-      whileDrag={{ scale: 1.02, zIndex: 40, cursor: "grabbing" }}
       className="absolute left-0 top-0 z-10 w-[178px] touch-none cursor-grab active:cursor-grabbing"
       style={{ left: coords.x, top: coords.y }}
-      onDragEnd={handleDragEnd}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointerDrag}
+      onPointerCancel={finishPointerDrag}
     >
       <div className={baseClass} style={paperStyle}>
         {content}
