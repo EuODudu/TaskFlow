@@ -17,9 +17,11 @@ import {
   useInvalidate,
   useMentalNotes,
   useProjects,
+  qk,
   type BoardColumn,
   type MentalNoteRow,
 } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMentalDeskUI } from "@/lib/stores";
 import {
   MENTAL_NOTE_TYPES,
@@ -123,9 +125,11 @@ export function MentalDesk({ userId }: Props) {
   const projectId = projects[0]?.id;
   const { data: columns = [] } = useColumns(projectId);
   const inv = useInvalidate();
+  const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const boardRef = useRef<HTMLDivElement>(null);
   const [discardingIds, setDiscardingIds] = useState<Set<string>>(new Set());
+  const [localPositions, setLocalPositions] = useState<Record<string, { x: number; y: number }>>({});
 
   const {
     filterType,
@@ -164,7 +168,9 @@ export function MentalDesk({ userId }: Props) {
 
   const createNote = async (type: MentalNoteType, title: string, content: string) => {
     const position = defaultSpawnPosition(notes.length);
-    const { error } = await supabase.from("mental_notes").insert({
+    const { data: createdNote, error } = await supabase
+      .from("mental_notes")
+      .insert({
       user_id: userId,
       title: title.trim() || "Nova nota",
       content: content.trim() || null,
@@ -173,11 +179,20 @@ export function MentalDesk({ userId }: Props) {
       x: position.x,
       y: position.y,
       rotation: position.rotation,
-    });
+      })
+      .select("*")
+      .single();
 
     if (error) {
       toast.error(error.message);
       return;
+    }
+
+    if (createdNote) {
+      queryClient.setQueryData<MentalNoteRow[]>(qk.mentalNotes(userId), (current = []) => [
+        createdNote as MentalNoteRow,
+        ...current.filter((note) => note.id !== createdNote.id),
+      ]);
     }
 
     closeComposer();
@@ -217,9 +232,10 @@ export function MentalDesk({ userId }: Props) {
     toast.success("Nota removida.");
   };
 
-  const savePosition = useDebouncedCallback(async (id: string, x: number, y: number) => {
+  const savePosition = async (id: string, x: number, y: number) => {
+    setLocalPositions((positions) => ({ ...positions, [id]: { x, y } }));
     await patchNote(id, { x, y });
-  }, 360);
+  };
 
   const convertToTask = async (note: MentalNote) => {
     if (!projectId) {
@@ -373,6 +389,7 @@ export function MentalDesk({ userId }: Props) {
                   dragging
                   boardRef={boardRef}
                   discarding={discardingIds.has(note.id)}
+                  position={localPositions[note.id]}
                   onExpand={() => setExpandedNoteId(note.id)}
                   onTogglePin={() => togglePin(note)}
                   onToggleComplete={() => toggleComplete(note)}
@@ -603,6 +620,7 @@ function BoardNote({
   dragging,
   boardRef,
   discarding,
+  position,
   onExpand,
   onTogglePin,
   onToggleComplete,
@@ -613,6 +631,7 @@ function BoardNote({
   dragging: boolean;
   boardRef?: RefObject<HTMLDivElement | null>;
   discarding: boolean;
+  position?: { x: number; y: number };
   onExpand: () => void;
   onTogglePin: () => void;
   onToggleComplete: () => void;
@@ -622,8 +641,8 @@ function BoardNote({
   const forgotten = isForgottenNote(note);
   const rotation = note.rotation || noteRotation(note.id);
   const spawn = defaultSpawnPosition(index);
-  const x = note.x > 0 || note.y > 0 ? note.x : spawn.x;
-  const y = note.x > 0 || note.y > 0 ? note.y : spawn.y;
+  const x = position?.x ?? (note.x > 0 || note.y > 0 ? note.x : spawn.x);
+  const y = position?.y ?? (note.x > 0 || note.y > 0 ? note.y : spawn.y);
   const isUrgent = note.note_type === "urgent" || note.priority === "urgent";
 
   const content = (
@@ -739,20 +758,25 @@ function BoardNote({
       drag
       dragMomentum={false}
       dragElastic={0.04}
-      dragConstraints={boardRef}
       initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
-      animate={discardAnimation ?? { opacity: 1, scale: 1, x, y, rotate: rotation }}
+      animate={discardAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
       exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
       transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "spring", stiffness: 260, damping: 30 }}
       whileHover={{ y: -3, scale: 1.015, rotate: rotation * 0.8, zIndex: 20 }}
       whileDrag={{ scale: 1.025, rotate: rotation * 0.25, zIndex: 30, cursor: "grabbing" }}
       className={cn(baseClass, "absolute left-0 top-0 touch-none cursor-grab active:cursor-grabbing")}
-      onDragEnd={(_, info: PanInfo) => {
-        const nextX = Math.max(0, Math.round(x + info.offset.x));
-        const nextY = Math.max(0, Math.round(y + info.offset.y));
+      onDragEnd={(event, info: PanInfo) => {
+        const boardRect = boardRef?.current?.getBoundingClientRect();
+        const noteRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        const maxX = Math.max(0, Math.round((boardRect?.width ?? 980) - noteRect.width));
+        const maxY = Math.max(0, Math.round((boardRect?.height ?? 430) - noteRect.height));
+        const nextX = Math.min(maxX, Math.max(0, Math.round(x + info.offset.x)));
+        const nextY = Math.min(maxY, Math.max(0, Math.round(y + info.offset.y)));
         onDragEnd?.(nextX, nextY);
       }}
       style={{
+        left: x,
+        top: y,
         clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)",
         transformOrigin: "50% 12%",
       } as CSSProperties}
