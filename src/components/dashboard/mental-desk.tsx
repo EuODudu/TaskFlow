@@ -48,6 +48,8 @@ const BOARD_NOTE_STYLE: Record<
     label: string;
     accent: string;
     note: string;
+    text: string;
+    muted: string;
     pin: string;
     tape: string;
   }
@@ -55,37 +57,47 @@ const BOARD_NOTE_STYLE: Record<
   priority: {
     label: "Prioridade",
     accent: "#60a5fa",
-    note: "from-slate-900 via-blue-950/95 to-slate-950",
+    note: "from-blue-50 via-sky-100 to-blue-200",
+    text: "text-slate-950",
+    muted: "text-slate-700",
     pin: "bg-blue-500",
-    tape: "bg-blue-400/18",
+    tape: "bg-blue-300/55",
   },
   idea: {
     label: "Ideia",
     accent: "#a78bfa",
-    note: "from-slate-900 via-violet-950/90 to-slate-950",
+    note: "from-violet-50 via-fuchsia-100 to-purple-200",
+    text: "text-slate-950",
+    muted: "text-slate-700",
     pin: "bg-violet-500",
-    tape: "bg-violet-400/18",
+    tape: "bg-violet-300/55",
   },
   quick: {
     label: "Rápida",
     accent: "#34d399",
-    note: "from-slate-900 via-emerald-950/85 to-slate-950",
+    note: "from-emerald-50 via-green-100 to-teal-200",
+    text: "text-slate-950",
+    muted: "text-slate-700",
     pin: "bg-emerald-500",
-    tape: "bg-emerald-400/18",
+    tape: "bg-emerald-300/55",
   },
   urgent: {
     label: "Urgente",
     accent: "#fb7185",
-    note: "from-slate-900 via-rose-950/90 to-slate-950",
+    note: "from-rose-50 via-red-100 to-orange-200",
+    text: "text-slate-950",
+    muted: "text-slate-700",
     pin: "bg-rose-500",
-    tape: "bg-rose-400/18",
+    tape: "bg-rose-300/55",
   },
   brain_dump: {
     label: "Brain Dump",
     accent: "#f59e0b",
-    note: "from-slate-900 via-amber-950/80 to-slate-950",
+    note: "from-amber-50 via-yellow-100 to-orange-200",
+    text: "text-slate-950",
+    muted: "text-slate-700",
     pin: "bg-amber-500",
-    tape: "bg-amber-400/18",
+    tape: "bg-amber-300/55",
   },
 };
 
@@ -128,7 +140,7 @@ export function MentalDesk({ userId }: Props) {
 
   const notes = useMemo(() => rawNotes.map((row) => parseNoteRow(row as unknown as Record<string, unknown>)), [rawNotes]);
   const filtered = useMemo(() => {
-    const visible = notes.filter((note) => (!note.is_completed || note.is_pinned) && !note.archived_at);
+    const visible = notes.filter((note) => !note.is_completed && !note.archived_at);
     return filterType === "all" ? visible : visible.filter((note) => note.note_type === filterType);
   }, [filterType, notes]);
 
@@ -188,6 +200,7 @@ export function MentalDesk({ userId }: Props) {
     setTimeout(async () => {
       await patchNote(note.id, {
         is_completed: true,
+        is_pinned: false,
         completed_at: new Date().toISOString(),
       });
       setDiscardingIds((ids) => {
@@ -619,17 +632,19 @@ function BoardNote({
         <span className="absolute left-1 top-1 size-1.5 rounded-full bg-white/55" />
       </div>
       <div className={cn("absolute left-5 right-5 top-2 h-5 rounded-sm opacity-80 rotate-[-2deg]", style.tape)} />
-      <div className="pointer-events-none absolute inset-0 rounded-[0.55rem] bg-[linear-gradient(135deg,rgba(255,255,255,.10),transparent_40%,rgba(255,255,255,.04))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,.42),transparent_36%,rgba(15,23,42,.08))]" />
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.10]"
+        className="pointer-events-none absolute inset-0 opacity-[0.22]"
         style={{
-          backgroundImage: "linear-gradient(rgba(255,255,255,.38) 1px, transparent 1px)",
-          backgroundSize: "100% 22px",
+          backgroundImage:
+            "linear-gradient(rgba(15,23,42,.20) 1px, transparent 1px), radial-gradient(circle at 1px 1px, rgba(15,23,42,.16) 1px, transparent 0)",
+          backgroundSize: "100% 22px, 9px 9px",
         }}
       />
+      <div className="pointer-events-none absolute -bottom-1 -right-1 size-10 rounded-tl-xl bg-slate-900/10 shadow-[-3px_-3px_7px_rgba(255,255,255,.28)]" />
       <div className="relative pt-3">
         <div className="flex items-start justify-between gap-2">
-          <p className="line-clamp-2 text-base font-black leading-tight text-white">{note.title}</p>
+          <p className={cn("line-clamp-2 text-base font-black leading-tight", style.text)}>{note.title}</p>
           <div className="flex gap-0.5">
             <button
               type="button"
@@ -637,7 +652,7 @@ function BoardNote({
                 event.stopPropagation();
                 onTogglePin();
               }}
-              className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              className="rounded-md p-1 text-slate-800/55 hover:bg-slate-950/10 hover:text-slate-950"
             >
               {note.is_pinned ? <Pin className="size-3.5 text-primary" /> : <PinOff className="size-3.5" />}
             </button>
@@ -647,7 +662,7 @@ function BoardNote({
                 event.stopPropagation();
                 onToggleComplete();
               }}
-              className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              className="rounded-md p-1 text-slate-800/55 hover:bg-slate-950/10 hover:text-slate-950"
             >
               <Check className="size-3.5" />
             </button>
@@ -655,23 +670,23 @@ function BoardNote({
         </div>
 
         {note.content && (
-          <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{note.content}</p>
+          <p className={cn("mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed", style.muted)}>{note.content}</p>
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-300">
+          <span className="rounded-full bg-slate-950/10 px-2 py-0.5 text-[10px] font-bold text-slate-800/70">
             {style.label}
           </span>
-          {isUrgent && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-200">urgente</span>}
-          {forgotten && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-200">rever</span>}
+          {isUrgent && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-800">urgente</span>}
+          {forgotten && <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-[10px] font-bold text-amber-900">rever</span>}
         </div>
       </div>
     </>
   );
 
   const baseClass = cn(
-    "relative w-[172px] min-h-[148px] cursor-pointer rounded-[0.55rem] border bg-gradient-to-br p-3 shadow-[0_12px_26px_rgba(0,0,0,0.35)]",
-    "before:pointer-events-none before:absolute before:bottom-0 before:right-0 before:size-7 before:rounded-tl-md before:bg-white/8 before:shadow-[-2px_-2px_5px_rgba(255,255,255,0.08)]",
+    "relative w-[178px] min-h-[154px] cursor-pointer border bg-gradient-to-br p-3 shadow-[0_14px_26px_rgba(0,0,0,0.38)]",
+    "before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-2 before:h-px before:bg-white/45",
     style.note,
     forgotten && "ring-2 ring-amber-400/25",
     isUrgent && "shadow-[0_14px_30px_rgba(127,29,29,0.28)]",
@@ -684,7 +699,7 @@ function BoardNote({
         x: dragging ? x + 260 : 80,
         y: dragging ? y + 220 : 120,
         opacity: [1, 0.8, 0],
-        borderRadius: ["0.55rem", "1.1rem", "999px"],
+        borderRadius: ["0.18rem", "1.1rem", "999px"],
         filter: ["brightness(1)", "brightness(.82)", "brightness(.55)"],
       }
     : undefined;
@@ -699,6 +714,7 @@ function BoardNote({
         transition={{ duration: discarding ? 0.58 : 0.22, ease: "easeInOut" }}
         className={baseClass}
         onClick={onExpand}
+        style={{ clipPath: "polygon(2% 1%, 98% 0%, 100% 91%, 91% 100%, 1% 98%, 0% 8%)" } as CSSProperties}
         whileHover={{ y: -3, scale: 1.015 }}
       >
         {content}
@@ -725,7 +741,10 @@ function BoardNote({
         const nextY = Math.max(0, Math.round(y + info.offset.y));
         onDragEnd?.(nextX, nextY);
       }}
-      style={{ transformOrigin: "50% 12%" } as CSSProperties}
+      style={{
+        clipPath: "polygon(2% 1%, 98% 0%, 100% 91%, 91% 100%, 1% 98%, 0% 8%)",
+        transformOrigin: "50% 12%",
+      } as CSSProperties}
     >
       {content}
     </motion.div>
