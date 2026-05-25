@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react";
 import { AnimatePresence, motion, type PanInfo } from "framer-motion";
-import { Brain, Check, ListTodo, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
+import { Brain, Check, ListTodo, Pencil, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -631,21 +631,33 @@ function BoardNote({
       <div className={cn("absolute left-1/2 top-[-11px] size-5 -translate-x-1/2 rounded-full shadow-[0_3px_10px_rgba(0,0,0,0.45)]", style.pin)}>
         <span className="absolute left-1 top-1 size-1.5 rounded-full bg-white/55" />
       </div>
-      <div className={cn("absolute left-5 right-5 top-2 h-5 rounded-sm opacity-80 rotate-[-2deg]", style.tape)} />
+      <div className={cn("absolute left-5 right-5 top-2 h-5 rounded-sm opacity-75 rotate-[-2deg] shadow-sm", style.tape)} />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,.42),transparent_36%,rgba(15,23,42,.08))]" />
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.22]"
+        className="pointer-events-none absolute inset-0 opacity-[0.24]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(15,23,42,.20) 1px, transparent 1px), radial-gradient(circle at 1px 1px, rgba(15,23,42,.16) 1px, transparent 0)",
-          backgroundSize: "100% 22px, 9px 9px",
+            "linear-gradient(rgba(15,23,42,.16) 1px, transparent 1px), radial-gradient(circle at 1px 1px, rgba(15,23,42,.13) 1px, transparent 0), linear-gradient(115deg, transparent 0 58%, rgba(255,255,255,.22) 58% 60%, transparent 60%)",
+          backgroundSize: "100% 22px, 10px 10px, 100% 100%",
         }}
       />
-      <div className="pointer-events-none absolute -bottom-1 -right-1 size-10 rounded-tl-xl bg-slate-900/10 shadow-[-3px_-3px_7px_rgba(255,255,255,.28)]" />
+      <div className="pointer-events-none absolute -bottom-1 -right-1 size-11 rounded-tl-xl bg-slate-900/10 shadow-[-4px_-4px_8px_rgba(255,255,255,.32)]" />
+      <div className="pointer-events-none absolute -left-1 top-8 h-16 w-3 rounded-full bg-white/25 blur-[1px]" />
       <div className="relative pt-3">
         <div className="flex items-start justify-between gap-2">
           <p className={cn("line-clamp-2 text-base font-black leading-tight", style.text)}>{note.title}</p>
           <div className="flex gap-0.5">
+            <button
+              type="button"
+              title="Editar nota"
+              onClick={(event) => {
+                event.stopPropagation();
+                onExpand();
+              }}
+              className="rounded-md p-1 text-slate-800/55 hover:bg-slate-950/10 hover:text-slate-950"
+            >
+              <Pencil className="size-3.5" />
+            </button>
             <button
               type="button"
               onClick={(event) => {
@@ -685,8 +697,9 @@ function BoardNote({
   );
 
   const baseClass = cn(
-    "relative w-[178px] min-h-[154px] cursor-pointer border bg-gradient-to-br p-3 shadow-[0_14px_26px_rgba(0,0,0,0.38)]",
+    "relative w-[178px] min-h-[154px] select-none border border-black/10 bg-gradient-to-br p-3 shadow-[0_14px_26px_rgba(0,0,0,0.38)]",
     "before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-2 before:h-px before:bg-white/45",
+    "after:pointer-events-none after:absolute after:inset-x-3 after:bottom-1 after:h-6 after:rounded-[50%] after:bg-black/10 after:blur-md",
     style.note,
     forgotten && "ring-2 ring-amber-400/25",
     isUrgent && "shadow-[0_14px_30px_rgba(127,29,29,0.28)]",
@@ -711,10 +724,9 @@ function BoardNote({
         initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
         animate={discardAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
         exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-        transition={{ duration: discarding ? 0.58 : 0.22, ease: "easeInOut" }}
+        transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "spring", stiffness: 260, damping: 28 }}
         className={baseClass}
-        onClick={onExpand}
-        style={{ clipPath: "polygon(2% 1%, 98% 0%, 100% 91%, 91% 100%, 1% 98%, 0% 8%)" } as CSSProperties}
+        style={{ clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)" } as CSSProperties}
         whileHover={{ y: -3, scale: 1.015 }}
       >
         {content}
@@ -726,23 +738,22 @@ function BoardNote({
     <motion.div
       drag
       dragMomentum={false}
-      dragElastic={0.06}
+      dragElastic={0.04}
       dragConstraints={boardRef}
       initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
       animate={discardAnimation ?? { opacity: 1, scale: 1, x, y, rotate: rotation }}
       exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-      transition={{ duration: discarding ? 0.58 : 0.24, ease: "easeInOut" }}
-      whileHover={{ y: -4, scale: 1.025, rotate: rotation * 0.7, zIndex: 20 }}
-      whileDrag={{ scale: 1.04, rotate: 0, zIndex: 30, cursor: "grabbing" }}
-      className={cn(baseClass, "absolute left-0 top-0 touch-none")}
-      onClick={onExpand}
+      transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "spring", stiffness: 260, damping: 30 }}
+      whileHover={{ y: -3, scale: 1.015, rotate: rotation * 0.8, zIndex: 20 }}
+      whileDrag={{ scale: 1.025, rotate: rotation * 0.25, zIndex: 30, cursor: "grabbing" }}
+      className={cn(baseClass, "absolute left-0 top-0 touch-none cursor-grab active:cursor-grabbing")}
       onDragEnd={(_, info: PanInfo) => {
         const nextX = Math.max(0, Math.round(x + info.offset.x));
         const nextY = Math.max(0, Math.round(y + info.offset.y));
         onDragEnd?.(nextX, nextY);
       }}
       style={{
-        clipPath: "polygon(2% 1%, 98% 0%, 100% 91%, 91% 100%, 1% 98%, 0% 8%)",
+        clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)",
         transformOrigin: "50% 12%",
       } as CSSProperties}
     >
