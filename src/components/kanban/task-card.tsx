@@ -1,13 +1,13 @@
 import { useSortable } from "@dnd-kit/sortable";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar as CalIcon, CalendarClock, Check, CheckSquare, Clock, Sun } from "lucide-react";
+import { Calendar as CalIcon, CalendarClock, Check, CheckSquare, Clock, GripVertical, Sun } from "lucide-react";
 import { priorityMeta, type CalendarEvent, type Task } from "@/lib/queries";
 import { format, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
-export function TaskCard({ task, onClick, onComplete, onPlanToday, checklistDone, checklistTotal, scheduledEvent }: {
+type TaskCardProps = {
   task: Task;
   onClick: () => void;
   onComplete?: () => void;
@@ -15,18 +15,22 @@ export function TaskCard({ task, onClick, onComplete, onPlanToday, checklistDone
   checklistDone?: number;
   checklistTotal?: number;
   scheduledEvent?: CalendarEvent;
+};
+
+function TaskCardBody({
+  task,
+  onClick,
+  onComplete,
+  onPlanToday,
+  checklistDone,
+  checklistTotal,
+  scheduledEvent,
+  dragHandle,
+  className,
+}: TaskCardProps & {
+  dragHandle?: ReactNode;
+  className?: string;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: task.id,
-    data: { type: "task", task },
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "done";
   const plannedFor = (task as Task & { planned_for?: string | null }).planned_for;
   const plannedToday = plannedFor ? isToday(new Date(`${plannedFor}T00:00:00`)) : false;
@@ -39,17 +43,13 @@ export function TaskCard({ task, onClick, onComplete, onPlanToday, checklistDone
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={onClick}
-      className="bg-card border rounded-lg p-3 cursor-pointer hover:border-primary/50 hover:shadow-md transition-all space-y-2 touch-none"
-    >
+    <div className={cn("bg-card border rounded-lg p-3 transition-all space-y-2", className)}>
       <div className="flex items-start gap-2">
+        {dragHandle}
         <div className="size-1.5 mt-1.5 rounded-full shrink-0" style={{ background: priorityMeta[task.priority].color }} />
-        <p className="text-sm font-medium flex-1 leading-snug">{task.title}</p>
+        <p className="text-sm font-medium flex-1 leading-snug cursor-pointer" onClick={onClick}>
+          {task.title}
+        </p>
       </div>
       {task.description && (
         <p className="text-xs text-muted-foreground line-clamp-2 pl-3.5">{task.description}</p>
@@ -107,6 +107,52 @@ export function TaskCard({ task, onClick, onComplete, onPlanToday, checklistDone
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Preview no DragOverlay — sem useSortable (evita id duplicado no contexto) */
+export function TaskCardDragPreview(props: TaskCardProps) {
+  return (
+    <TaskCardBody
+      {...props}
+      onClick={() => {}}
+      className="shadow-lg ring-2 ring-primary/30 cursor-grabbing rotate-1"
+    />
+  );
+}
+
+export function TaskCard(props: TaskCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.task.id,
+    data: { type: "task", task: props.task },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const dragHandle = (
+    <button
+      type="button"
+      aria-label="Arrastar tarefa"
+      className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted cursor-grab active:cursor-grabbing touch-none"
+      {...attributes}
+      {...listeners}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <GripVertical className="size-4" />
+    </button>
+  );
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn("hover:border-primary/50 hover:shadow-md rounded-lg", isDragging && "opacity-40")}
+    >
+      <TaskCardBody {...props} dragHandle={dragHandle} className="hover:border-primary/50" />
     </div>
   );
 }

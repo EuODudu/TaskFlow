@@ -9,7 +9,7 @@ import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type { EventInput } from "@fullcalendar/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type CalendarEvent, type TaskPriority } from "@/lib/queries";
+import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
 import { findScheduleConflicts, rangesOverlap } from "@/lib/task-schedule";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { addMinutes, format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Copy } from "lucide-react";
 
 type Editing = {
   id?: string;
@@ -41,6 +42,11 @@ type CalendarFilters = {
   reminders: boolean;
 };
 
+type CopyDayState = {
+  sourceDate: string;
+  targetDate: string;
+};
+
 const emptyEvent = (start?: Date, projectId = ""): Editing => ({
   title: "",
   starts_at: format(start ?? new Date(), "yyyy-MM-dd'T'HH:mm"),
@@ -59,6 +65,15 @@ const RRULES: Record<string, string | null> = {
   weekly: "FREQ=WEEKLY",
   monthly: "FREQ=MONTHLY",
 };
+
+function dateKey(date: string | Date) {
+  return format(new Date(date), "yyyy-MM-dd");
+}
+
+function moveDateKeepingLocalTime(date: string, targetDate: string) {
+  const original = new Date(date);
+  return new Date(`${targetDate}T${format(original, "HH:mm:ss")}`);
+}
 
 function eventPassesFilter(e: CalendarEvent, filters: CalendarFilters) {
   if (e.type === "task") return filters.tasks;
@@ -99,6 +114,12 @@ export function CalendarView() {
   const calRef = useRef<FullCalendar | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [open, setOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyDay, setCopyDay] = useState<CopyDayState>(() => ({
+    sourceDate: format(new Date(), "yyyy-MM-dd"),
+    targetDate: format(new Date(), "yyyy-MM-dd"),
+  }));
   const [filters, setFilters] = useState<CalendarFilters>({
     tasks: true,
     meetings: true,
@@ -109,6 +130,21 @@ export function CalendarView() {
   const { data: selectedColumns = [] } = useColumns(selectedProjectId);
 
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+
+  const tasksToCopy = useMemo(
+    () => events.filter((e) => e.type === "task" && dateKey(e.starts_at) === copyDay.sourceDate),
+    [copyDay.sourceDate, events],
+  );
+
+  const copyDayOptions = useMemo(() => {
+    const options = new Map<string, number>();
+    for (const event of events) {
+      if (event.type !== "task") continue;
+      const key = dateKey(event.starts_at);
+      options.set(key, (options.get(key) ?? 0) + 1);
+    }
+    return [...options.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [events]);
 
   const visibleEvents = useMemo(
     () => events.filter((e) => eventPassesFilter(e, filters)),
@@ -302,6 +338,92 @@ export function CalendarView() {
     setOpen(false);
   };
 
+  const copyTasksFromDay = async () => {
+    if (!user) return;
+    if (!copyDay.sourceDate || !copyDay.targetDate) return toast.error("Escolha o dia de origem e o dia de destino.");
+    if (copyDay.sourceDate === copyDay.targetDate) return toast.error("Escolha uma data de destino diferente da origem.");
+    if (tasksToCopy.length === 0) return toast.error("Esse dia não tem tarefas agendadas para copiar.");
+
+    setCopying(true);
+
+    const positionByColumn = new Map<string, number>();
+    for (const task of tasks) {
+      if (!task.column_id) continue;
+      const key = `${task.project_id}:${task.column_id}`;
+      positionByColumn.set(key, Math.max(positionByColumn.get(key) ?? 0, task.position + 1));
+    }
+
+    try {
+      let copied = 0;
+      for (const event of tasksToCopy) {
+        const sourceTask = event.task_id ? taskById.get(event.task_id) : undefined;
+        if (!sourceTask) continue;
+
+        const startsAt = moveDateKeepingLocalTime(event.starts_at, copyDay.targetDate);
+        const endsAt = moveDateKeepingLocalTime(event.ends_at, copyDay.targetDate);
+        const columnKey = sourceTask.column_id ? `${sourceTask.project_id}:${sourceTask.column_id}` : null;
+        const nextPosition = columnKey ? positionByColumn.get(columnKey) ?? 0 : sourceTask.position;
+        if (columnKey) positionByColumn.set(columnKey, nextPosition + 1);
+
+        const taskPayload: Partial<Task> & Pick<Task, "owner_id" | "project_id" | "title"> = {
+          owner_id: user.id,
+          project_id: sourceTask.project_id,
+          column_id: sourceTask.column_id,
+          title: sourceTask.title,
+          description: sourceTask.description,
+          priority: sourceTask.priority,
+          status: sourceTask.status,
+          position: nextPosition,
+          estimated_minutes: sourceTask.estimated_minutes,
+          due_date: dateKey(startsAt),
+          planned_for: dateKey(startsAt),
+          parent_task_id: sourceTask.parent_task_id,
+          is_favorite: sourceTask.is_favorite,
+        };
+
+        const { data: createdTask, error: taskError } = await supabase
+          .from("tasks")
+          .insert(taskPayload)
+          .select("id")
+          .single();
+        if (taskError) throw taskError;
+
+        const eventPayload = {
+          owner_id: user.id,
+          task_id: createdTask.id,
+          title: event.title,
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+          type: "task" as const,
+          color: event.color,
+          notes: event.notes,
+          location: event.location,
+          all_day: event.all_day,
+          recurrence_rule: null,
+        };
+
+        const { error: eventError } = await supabase.from("calendar_events").insert(eventPayload);
+        if (eventError) throw eventError;
+        copied++;
+      }
+
+      if (copied === 0) {
+        toast.error("Não encontrei tarefas vinculadas ao Kanban nesse dia.");
+        return;
+      }
+
+      inv.events();
+      const projectIds = new Set(tasksToCopy.map((event) => event.task_id ? taskById.get(event.task_id)?.project_id : null).filter(Boolean));
+      projectIds.forEach((projectId) => inv.tasks(projectId as string));
+      setCopyOpen(false);
+      toast.success(`${copied} tarefa(s) copiadas para ${format(new Date(`${copyDay.targetDate}T00:00:00`), "dd/MM")}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível copiar as tarefas.");
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const renderEventContent = (arg: EventContentArg) => {
     const isTask = arg.event.extendedProps.kind === "task";
     return (
@@ -349,9 +471,20 @@ export function CalendarView() {
             </span>
           )}
         </div>
-        <Button size="sm" className="rounded-full px-4" onClick={() => { setEditing(emptyEvent(undefined, projects[0]?.id)); setOpen(true); }}>
-          + Novo evento
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full px-4"
+            onClick={() => setCopyOpen(true)}
+          >
+            <Copy className="size-3.5" />
+            Copiar dia
+          </Button>
+          <Button size="sm" className="rounded-full px-4" onClick={() => { setEditing(emptyEvent(undefined, projects[0]?.id)); setOpen(true); }}>
+            + Novo evento
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card/50 p-3 shadow-sm [&_.fc]:h-full [&_.fc-event-conflict]:ring-2 [&_.fc-event-conflict]:ring-destructive/60">
@@ -462,6 +595,63 @@ export function CalendarView() {
             <div className="flex-1" />
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={saveEvent}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Copiar tarefas de outro dia</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Copiar tarefas de</Label>
+              <Input
+                type="date"
+                value={copyDay.sourceDate}
+                onChange={(e) => setCopyDay((state) => ({ ...state, sourceDate: e.target.value }))}
+              />
+              {copyDayOptions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {copyDayOptions.slice(0, 6).map(([date, count]) => (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => setCopyDay((state) => ({ ...state, sourceDate: date }))}
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                        copyDay.sourceDate === date
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {format(new Date(`${date}T00:00:00`), "dd/MM")} ({count})
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {tasksToCopy.length} tarefa(s) encontrada(s) nesse dia.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Colar em</Label>
+              <Input
+                type="date"
+                value={copyDay.targetDate}
+                onChange={(e) => setCopyDay((state) => ({ ...state, targetDate: e.target.value }))}
+              />
+            </div>
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              As tarefas serão recriadas no Kanban e agendadas no mesmo horário do dia escolhido.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => setCopyOpen(false)}>Cancelar</Button>
+            <Button onClick={copyTasksFromDay} disabled={copying || tasksToCopy.length === 0}>
+              {copying ? "Copiando..." : "Copiar tarefas"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
