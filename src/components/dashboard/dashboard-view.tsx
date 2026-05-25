@@ -14,7 +14,13 @@ import { ptBR } from "date-fns/locale";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getDailyActiveTodayKey, persistDailyActiveSeconds, readLocalSeconds, useDailyActiveSeconds } from "@/components/dashboard/daily-active-time-tracker";
+import {
+  dailyActiveTimeQueryKey,
+  getDailyActiveTodayKey,
+  persistDailyActiveSeconds,
+  readLocalSeconds,
+  useDailyActiveSeconds,
+} from "@/components/dashboard/daily-active-time-tracker";
 
 type DailyMission = {
   key: "complete_3_tasks" | "focus_50_minutes" | "clear_overdue";
@@ -145,7 +151,9 @@ export function DashboardView() {
     setClaiming(mission.key);
     try {
       if (mission.key === "focus_50_minutes") {
-        await persistDailyActiveSeconds(user.id, todayKey, resolvedActiveSecondsToday);
+        const focusSecondsForClaim = Math.max(resolvedActiveSecondsToday, stats.focusSecondsToday, mission.target);
+        await persistDailyActiveSeconds(user.id, todayKey, focusSecondsForClaim);
+        qc.setQueryData(dailyActiveTimeQueryKey(user.id, todayKey), focusSecondsForClaim);
       }
     } catch (error) {
       setClaiming(null);

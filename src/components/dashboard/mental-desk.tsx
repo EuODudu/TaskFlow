@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
-import { AnimatePresence, motion, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Brain, Check, ListTodo, Pencil, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
@@ -152,7 +152,13 @@ export function MentalDesk({ userId }: Props) {
   const expandedNote = notes.find((note) => note.id === expandedNoteId) ?? null;
   const refresh = () => inv.mentalNotes(userId);
 
-  const patchNote = async (id: string, patch: Partial<MentalNoteRow>) => {
+  const upsertNoteInCache = (id: string, patch: Partial<MentalNoteRow>) => {
+    queryClient.setQueryData<MentalNoteRow[]>(qk.mentalNotes(userId), (current = []) =>
+      current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  };
+
+  const patchNote = async (id: string, patch: Partial<MentalNoteRow>, options?: { silent?: boolean }) => {
     const { error } = await supabase.from("mental_notes").update(patch).eq("id", id).eq("user_id", userId);
     if (error) {
       if (error.code === "PGRST205" || /mental_notes/i.test(error.message)) {
@@ -162,7 +168,8 @@ export function MentalDesk({ userId }: Props) {
       toast.error(error.message);
       return false;
     }
-    refresh();
+    upsertNoteInCache(id, patch);
+    if (!options?.silent) refresh();
     return true;
   };
 
@@ -193,10 +200,13 @@ export function MentalDesk({ userId }: Props) {
         createdNote as MentalNoteRow,
         ...current.filter((note) => note.id !== createdNote.id),
       ]);
+      setLocalPositions((positions) => ({
+        ...positions,
+        [createdNote.id]: { x: Number(createdNote.x), y: Number(createdNote.y) },
+      }));
     }
 
     closeComposer();
-    refresh();
     toast.success("Nota fixada na Mesa Mental.");
   };
 
@@ -234,7 +244,7 @@ export function MentalDesk({ userId }: Props) {
 
   const savePosition = async (id: string, x: number, y: number) => {
     setLocalPositions((positions) => ({ ...positions, [id]: { x, y } }));
-    await patchNote(id, { x, y });
+    await patchNote(id, { x, y }, { silent: true });
   };
 
   const convertToTask = async (note: MentalNote) => {
@@ -328,7 +338,7 @@ export function MentalDesk({ userId }: Props) {
       </div>
 
       <div className="space-y-4 p-4">
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {composerMode !== "closed" && (
             <NoteComposer
               key={composerMode}
@@ -339,7 +349,7 @@ export function MentalDesk({ userId }: Props) {
           )}
         </AnimatePresence>
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {expandedNote && (
             <ExpandedNotePanel
               note={expandedNote}
@@ -353,7 +363,7 @@ export function MentalDesk({ userId }: Props) {
           )}
         </AnimatePresence>
 
-        {isLoading ? (
+        {isLoading && notes.length === 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
               <div key={index} className="h-36 animate-pulse rounded-xl bg-white/10" />
@@ -641,9 +651,14 @@ function BoardNote({
   const forgotten = isForgottenNote(note);
   const rotation = note.rotation || noteRotation(note.id);
   const spawn = defaultSpawnPosition(index);
-  const x = position?.x ?? (note.x > 0 || note.y > 0 ? note.x : spawn.x);
-  const y = position?.y ?? (note.x > 0 || note.y > 0 ? note.y : spawn.y);
+  const resolvedX = position?.x ?? (Number(note.x) > 0 || Number(note.y) > 0 ? note.x : spawn.x);
+  const resolvedY = position?.y ?? (Number(note.x) > 0 || Number(note.y) > 0 ? note.y : spawn.y);
+  const [coords, setCoords] = useState({ x: resolvedX, y: resolvedY });
   const isUrgent = note.note_type === "urgent" || note.priority === "urgent";
+
+  useEffect(() => {
+    setCoords({ x: resolvedX, y: resolvedY });
+  }, [note.id, resolvedX, resolvedY]);
 
   const content = (
     <>
@@ -724,31 +739,47 @@ function BoardNote({
     isUrgent && "shadow-[0_14px_30px_rgba(127,29,29,0.28)]",
   );
 
+  const paperStyle = {
+    clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)",
+    transform: `rotate(${rotation}deg)`,
+    transformOrigin: "50% 12%",
+  } as CSSProperties;
+
   const discardAnimation = discarding
     ? {
         scale: [1, 0.86, 0.38],
-        rotate: [rotation, rotation + 18, rotation + 140],
-        x: dragging ? x + 260 : 80,
-        y: dragging ? y + 220 : 120,
         opacity: [1, 0.8, 0],
-        borderRadius: ["0.18rem", "1.1rem", "999px"],
         filter: ["brightness(1)", "brightness(.82)", "brightness(.55)"],
       }
     : undefined;
 
+  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent) => {
+    const board = boardRef?.current;
+    if (!board) return;
+
+    const boardRect = board.getBoundingClientRect();
+    const noteRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const maxX = Math.max(0, Math.round(boardRect.width - noteRect.width));
+    const maxY = Math.max(0, Math.round(boardRect.height - noteRect.height));
+    const nextX = Math.min(maxX, Math.max(0, Math.round(noteRect.left - boardRect.left)));
+    const nextY = Math.min(maxY, Math.max(0, Math.round(noteRect.top - boardRect.top)));
+
+    setCoords({ x: nextX, y: nextY });
+    onDragEnd?.(nextX, nextY);
+  };
+
   if (!dragging) {
     return (
       <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
-        animate={discardAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
-        exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-        transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "spring", stiffness: 260, damping: 28 }}
-        className={baseClass}
-        style={{ clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)" } as CSSProperties}
-        whileHover={{ y: -3, scale: 1.015 }}
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={discardAnimation ?? { opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { duration: 0.2 }}
+        className="relative w-[178px]"
       >
-        {content}
+        <div className={baseClass} style={paperStyle}>
+          {content}
+        </div>
       </motion.div>
     );
   }
@@ -757,31 +788,20 @@ function BoardNote({
     <motion.div
       drag
       dragMomentum={false}
-      dragElastic={0.04}
-      initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
-      animate={discardAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
-      exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-      transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "spring", stiffness: 260, damping: 30 }}
-      whileHover={{ y: -3, scale: 1.015, rotate: rotation * 0.8, zIndex: 20 }}
-      whileDrag={{ scale: 1.025, rotate: rotation * 0.25, zIndex: 30, cursor: "grabbing" }}
-      className={cn(baseClass, "absolute left-0 top-0 touch-none cursor-grab active:cursor-grabbing")}
-      onDragEnd={(event, info: PanInfo) => {
-        const boardRect = boardRef?.current?.getBoundingClientRect();
-        const noteRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        const maxX = Math.max(0, Math.round((boardRect?.width ?? 980) - noteRect.width));
-        const maxY = Math.max(0, Math.round((boardRect?.height ?? 430) - noteRect.height));
-        const nextX = Math.min(maxX, Math.max(0, Math.round(x + info.offset.x)));
-        const nextY = Math.min(maxY, Math.max(0, Math.round(y + info.offset.y)));
-        onDragEnd?.(nextX, nextY);
-      }}
-      style={{
-        left: x,
-        top: y,
-        clipPath: "polygon(3% 1%, 97% 0%, 100% 12%, 98% 91%, 91% 100%, 2% 98%, 0% 72%, 1% 9%)",
-        transformOrigin: "50% 12%",
-      } as CSSProperties}
+      dragElastic={0.02}
+      dragConstraints={boardRef}
+      initial={{ opacity: 0, scale: 0.94 }}
+      animate={discardAnimation ?? { opacity: 1, scale: 1, x: 0, y: 0 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      transition={discarding ? { duration: 0.58, ease: "easeInOut" } : { type: "tween", duration: 0.15 }}
+      whileDrag={{ scale: 1.02, zIndex: 40, cursor: "grabbing" }}
+      className="absolute left-0 top-0 z-10 w-[178px] touch-none cursor-grab active:cursor-grabbing"
+      style={{ left: coords.x, top: coords.y }}
+      onDragEnd={handleDragEnd}
     >
-      {content}
+      <div className={baseClass} style={paperStyle}>
+        {content}
+      </div>
     </motion.div>
   );
 }

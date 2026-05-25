@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useInvalidate } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
-import { usePomodoro } from "@/lib/stores";
+import { usePomodoro, useTaskSoundNotifications } from "@/lib/stores";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Sun, Moon } from "lucide-react";
+import { BellRing, Moon, Sun } from "lucide-react";
 
 export const Route = createFileRoute("/_app/settings")({ component: SettingsPage });
 
@@ -22,6 +22,7 @@ function SettingsPage() {
   const inv = useInvalidate();
   const { theme, setTheme } = useTheme();
   const pomo = usePomodoro();
+  const taskSounds = useTaskSoundNotifications();
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("");
 
@@ -88,6 +89,56 @@ function SettingsPage() {
         <div className="flex items-center justify-between pt-2">
           <Label htmlFor="sound">Som ao terminar ciclo</Label>
           <Switch id="sound" checked={pomo.soundEnabled} onCheckedChange={(v) => pomo.setSettings({ soundEnabled: v })} />
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <BellRing className="size-4 text-primary" />
+          <h2 className="font-semibold">Alertas sonoros de tarefas</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Toca um som e mostra um aviso quando uma tarefa agendada estiver perto de começar ou terminar.
+        </p>
+        <div className="flex items-center justify-between pt-2">
+          <Label htmlFor="task-sound-alerts">Ativar alertas sonoros</Label>
+          <Switch
+            id="task-sound-alerts"
+            checked={taskSounds.enabled}
+            onCheckedChange={(enabled) => taskSounds.setSettings({ enabled })}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="task-start-alert">Avisar antes de iniciar (min)</Label>
+            <Input
+              id="task-start-alert"
+              type="number"
+              min={1}
+              max={120}
+              value={taskSounds.startLeadMinutes}
+              onChange={(event) =>
+                taskSounds.setSettings({
+                  startLeadMinutes: Math.max(1, Math.min(120, Number(event.target.value) || 10)),
+                })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="task-end-alert">Avisar antes de terminar (min)</Label>
+            <Input
+              id="task-end-alert"
+              type="number"
+              min={1}
+              max={120}
+              value={taskSounds.endLeadMinutes}
+              onChange={(event) =>
+                taskSounds.setSettings({
+                  endLeadMinutes: Math.max(1, Math.min(120, Number(event.target.value) || 5)),
+                })
+              }
+            />
+          </div>
         </div>
       </Card>
     </div>

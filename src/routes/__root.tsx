@@ -11,6 +11,7 @@ import {
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
+import { TaskSoundNotifier } from "@/components/notifications/task-sound-notifier";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -125,6 +126,7 @@ function RootComponent() {
       <ThemeProvider>
         <AuthProvider>
           <Outlet />
+          <TaskSoundNotifier />
           <Toaster richColors position="top-right" />
         </AuthProvider>
       </ThemeProvider>

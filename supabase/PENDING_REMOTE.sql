@@ -108,6 +108,16 @@ BEGIN
     RAISE EXCEPTION 'Usuário não autenticado';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM public.daily_mission_claims
+    WHERE user_id = v_user_id
+      AND mission_key = p_mission_key
+      AND mission_date = v_today
+  ) THEN
+    RAISE EXCEPTION 'Missão já resgatada hoje';
+  END IF;
+
   SELECT COUNT(*) INTO v_completed_tasks
   FROM public.tasks
   WHERE owner_id = v_user_id
@@ -119,6 +129,18 @@ BEGIN
   FROM public.daily_active_time
   WHERE user_id = v_user_id
     AND activity_date = v_today;
+
+  SELECT GREATEST(
+    COALESCE(v_focus_seconds, 0),
+    COALESCE((
+      SELECT SUM(duration_seconds)::INT
+      FROM public.pomodoro_sessions
+      WHERE user_id = v_user_id
+        AND kind = 'focus'
+        AND started_at >= v_today::timestamptz
+        AND started_at < (v_today + 1)::timestamptz
+    ), 0)
+  ) INTO v_focus_seconds;
 
   SELECT COUNT(*) INTO v_overdue_count
   FROM public.tasks
@@ -396,6 +418,53 @@ DROP TRIGGER IF EXISTS mental_notes_updated_at ON public.mental_notes;
 CREATE TRIGGER mental_notes_updated_at
   BEFORE UPDATE ON public.mental_notes
   FOR EACH ROW EXECUTE FUNCTION public.mental_notes_set_updated_at();
+
+-- =========================================================
+-- 9. Notificações de conquistas: tipos legados + triggers XP
+-- IMPORTANTE: rode este bloco INTEIRO (do UPDATE até o último CREATE TRIGGER).
+-- Não execute só a linha "AFTER UPDATE..." isolada — isso gera erro de sintaxe.
+-- Pré-requisito: seção 5 (award_task_xp) já executada neste arquivo.
+-- =========================================================
+
+UPDATE public.badges SET condition_type = 'tasks_completed' WHERE condition_type = 'tasks_done';
+UPDATE public.badges SET condition_type = 'pomodoro_sessions' WHERE condition_type = 'pomodoros_done';
+UPDATE public.badges SET condition_type = 'early_deliveries' WHERE condition_type = 'tasks_early';
+UPDATE public.badges SET condition_type = 'level' WHERE condition_type = 'level_reached';
+
+DROP TRIGGER IF EXISTS trg_award_xp_task_done ON public.tasks;
+DROP TRIGGER IF EXISTS trg_award_xp_pomodoro ON public.pomodoro_sessions;
+DROP TRIGGER IF EXISTS tasks_award_xp ON public.tasks;
+DROP TRIGGER IF EXISTS pomodoro_award_xp ON public.pomodoro_sessions;
+
+CREATE OR REPLACE FUNCTION public.award_pomodoro_xp()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.kind = 'focus' THEN
+    INSERT INTO public.xp_events (user_id, amount, reason)
+      VALUES (NEW.user_id, 10, 'pomodoro_session');
+
+    UPDATE public.profiles
+    SET
+      xp = xp + 10,
+      coins = coins + 2,
+      last_active_date = CURRENT_DATE,
+      streak_days = CASE
+        WHEN last_active_date = CURRENT_DATE THEN streak_days
+        WHEN last_active_date = CURRENT_DATE - INTERVAL '1 day' THEN streak_days + 1
+        ELSE 1
+      END
+    WHERE id = NEW.user_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tasks_award_xp AFTER UPDATE ON public.tasks FOR EACH ROW EXECUTE FUNCTION public.award_task_xp();
+CREATE TRIGGER pomodoro_award_xp AFTER INSERT ON public.pomodoro_sessions FOR EACH ROW EXECUTE FUNCTION public.award_pomodoro_xp();
 
 -- =========================================================
 -- FIM

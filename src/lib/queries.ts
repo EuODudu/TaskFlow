@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { getLevelFromXP } from "@/lib/gamification";
+import { resolveBadgeProgress } from "@/lib/gamification-stats";
 
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type BoardColumn = Database["public"]["Tables"]["board_columns"]["Row"];
@@ -83,9 +84,10 @@ export function useTasks(projectId: string | undefined) {
   });
 }
 
-export function useAllTasks() {
+export function useAllTasks(enabled = true) {
   return useQuery({
     queryKey: qk.allTasks,
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase.from("tasks").select("*").is("archived_at", null).order("due_date", { ascending: true });
       if (error) throw error;
@@ -94,9 +96,10 @@ export function useAllTasks() {
   });
 }
 
-export function useEvents() {
+export function useEvents(enabled = true) {
   return useQuery({
     queryKey: qk.events,
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase.from("calendar_events").select("*").order("starts_at");
       if (error) throw error;
@@ -457,7 +460,7 @@ export async function checkAndAwardBadges(
   const newBadges: Array<{ name: string; icon: string; rarity: string }> = [];
   for (const badge of badgesRes.data ?? []) {
     if (existingIds.has(badge.id)) continue;
-    const stat = stats[badge.condition_type] ?? 0;
+    const stat = resolveBadgeProgress(badge.condition_type, stats);
     if (stat >= badge.condition_value) {
       const { error } = await supabase.from("user_badges").insert({ user_id: userId, badge_id: badge.id });
       if (!error) {

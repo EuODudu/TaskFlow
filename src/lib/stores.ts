@@ -41,6 +41,13 @@ type PersistedPomodoroState = Partial<{
   soundEnabled: boolean;
 }>;
 
+type TaskSoundNotificationState = {
+  enabled: boolean;
+  startLeadMinutes: number;
+  endLeadMinutes: number;
+  setSettings: (settings: Partial<Pick<TaskSoundNotificationState, "enabled" | "startLeadMinutes" | "endLeadMinutes">>) => void;
+};
+
 function readPomodoroSnapshot(): PersistedPomodoroState {
   if (typeof window === "undefined") return {};
 
@@ -208,6 +215,18 @@ export const usePomodoro = create<PomodoroState>()(
       }),
     }
   )
+);
+
+export const useTaskSoundNotifications = create<TaskSoundNotificationState>()(
+  persist(
+    (set) => ({
+      enabled: true,
+      startLeadMinutes: 10,
+      endLeadMinutes: 5,
+      setSettings: (settings) => set(settings),
+    }),
+    { name: "tf-task-sound-notifications" },
+  ),
 );
 
 type MentalDeskUIState = {

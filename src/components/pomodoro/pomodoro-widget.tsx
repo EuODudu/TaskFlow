@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePomodoro } from "@/lib/stores";
-import { useAllTasks, useInvalidate } from "@/lib/queries";
+import { checkAndAwardBadges, useAllTasks, useInvalidate } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -33,19 +33,32 @@ export function PomodoroWidget() {
   useEffect(() => {
     const completed = p.completedFocusSession;
     if (!user || !completed) return;
-    supabase.from("pomodoro_sessions").insert({
-      user_id: user.id,
-      task_id: completed.taskId,
-      started_at: new Date(completed.startedAt).toISOString(),
-      ended_at: new Date().toISOString(),
-      duration_seconds: completed.durationSeconds,
-      kind: "focus",
-    }).then(() => {
+    void (async () => {
+      const { error } = await supabase.from("pomodoro_sessions").insert({
+        user_id: user.id,
+        task_id: completed.taskId,
+        started_at: new Date(completed.startedAt).toISOString(),
+        ended_at: new Date().toISOString(),
+        duration_seconds: completed.durationSeconds,
+        kind: "focus",
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
       usePomodoro.setState({ completedFocusSession: null });
       inv.pomodoro();
       inv.profile();
       toast.success("+10 XP 🍅", { description: "Sessão Pomodoro concluída!", duration: 3000 });
-    });
+
+      const newBadges = await checkAndAwardBadges(user.id);
+      newBadges.forEach((badge) =>
+        toast.success(`${badge.icon} Conquista desbloqueada!`, { description: badge.name, duration: 5000 }),
+      );
+      if (newBadges.length > 0) inv.userBadges(user.id);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.completedFocusSession?.id]);
 

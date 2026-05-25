@@ -114,7 +114,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
 
   const onDragOver = (_e: DragOverEvent) => {};
 
-  const handleTaskCompleted = (task: Task) => {
+  const handleTaskCompleted = async (task: Task) => {
     if (!user) return;
     const reward = getEstimatedTaskReward(task);
     toast.success(`+${reward.xp} XP • +${reward.coins} moedas ✨`, {
@@ -123,11 +123,12 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
         : "Tarefa concluída!",
       duration: 3000,
     });
-    checkAndAwardBadges(user.id).then((newBadges) => {
-      newBadges.forEach((b) => toast.success(`${b.icon} Conquista desbloqueada!`, { description: b.name, duration: 5000 }));
-      if (newBadges.length > 0) inv.userBadges(user.id);
-      inv.profile();
-    });
+    const newBadges = await checkAndAwardBadges(user.id);
+    newBadges.forEach((b) =>
+      toast.success(`${b.icon} Conquista desbloqueada!`, { description: b.name, duration: 5000 }),
+    );
+    if (newBadges.length > 0) inv.userBadges(user.id);
+    inv.profile();
   };
 
   const completeTask = async (task: Task) => {
@@ -145,7 +146,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
     if (error) return toast.error(error.message);
     inv.tasks(projectId);
     inv.events();
-    handleTaskCompleted(task);
+    await handleTaskCompleted(task);
   };
 
   const planTaskToday = async (task: Task) => {
@@ -251,7 +252,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
 
     // XP notification when moving a task to done
     if (statusForColumn === "done" && draggedTask.status !== "done" && user) {
-      handleTaskCompleted(draggedTask);
+      await handleTaskCompleted(draggedTask);
     }
 
     inv.events();

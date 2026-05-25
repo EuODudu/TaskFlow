@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useBadges, useUserBadges, useProfile, useXpEvents } from "@/lib/queries";
 import { getLevelFromXP } from "@/lib/gamification";
+import { withLegacyBadgeStats } from "@/lib/gamification-stats";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { RARITY_STYLES, type ExtendedRarity } from "@/components/gamification/rarity-frame";
@@ -61,14 +62,14 @@ function AchievementsPage() {
   const totalPomodoro = xpEvents.filter((e) => e.reason === "pomodoro_session").length;
   const earlyDeliveries = xpEvents.filter((e) => e.reason === "early_delivery").length;
 
-  const stats: Record<string, number> = {
-    tasks_completed:   totalTasks,
-    early_deliveries:  earlyDeliveries,
-    streak_days:       profile?.streak_days ?? 0,
+  const stats = withLegacyBadgeStats({
+    tasks_completed: totalTasks,
+    early_deliveries: earlyDeliveries,
+    streak_days: profile?.streak_days ?? 0,
     pomodoro_sessions: totalPomodoro,
     level,
-    xp_total:          xp,
-  };
+    xp_total: xp,
+  });
 
   const pct = allBadges.length ? Math.round((earnedMap.size / allBadges.length) * 100) : 0;
 
