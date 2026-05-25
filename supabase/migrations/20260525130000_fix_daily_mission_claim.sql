@@ -1,4 +1,10 @@
 -- Permite resgatar missão de foco usando tempo ativo local ou Pomodoro do dia.
+-- Também tolera tarefas antigas que ficaram "done" sem completed_at por bug no cliente.
+
+UPDATE public.tasks
+SET completed_at = COALESCE(completed_at, updated_at, now())
+WHERE status = 'done'
+  AND completed_at IS NULL;
 
 CREATE OR REPLACE FUNCTION public.claim_daily_mission(p_mission_key TEXT)
 RETURNS TABLE(mission_key TEXT, xp_reward INT, coins_reward INT)
@@ -8,7 +14,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_user_id UUID := auth.uid();
-  v_today DATE := CURRENT_DATE;
+  v_today DATE := (now() AT TIME ZONE 'America/Sao_Paulo')::date;
   v_completed_tasks INT := 0;
   v_focus_seconds INT := 0;
   v_active_seconds INT := 0;
@@ -35,8 +41,7 @@ BEGIN
   FROM public.tasks
   WHERE owner_id = v_user_id
     AND status = 'done'
-    AND completed_at >= v_today::timestamptz
-    AND completed_at < (v_today + 1)::timestamptz;
+    AND COALESCE(completed_at, updated_at)::date = v_today;
 
   SELECT COALESCE(active_seconds, 0) INTO v_active_seconds
   FROM public.daily_active_time
@@ -47,8 +52,7 @@ BEGIN
   FROM public.pomodoro_sessions
   WHERE user_id = v_user_id
     AND kind = 'focus'
-    AND started_at >= v_today::timestamptz
-    AND started_at < (v_today + 1)::timestamptz;
+    AND started_at::date = v_today;
 
   v_focus_seconds := GREATEST(COALESCE(v_active_seconds, 0), COALESCE(v_pomodoro_seconds, 0));
 
@@ -58,7 +62,7 @@ BEGIN
     AND status <> 'done'
     AND archived_at IS NULL
     AND due_date IS NOT NULL
-    AND due_date < v_today::timestamptz;
+    AND due_date::date < v_today;
 
   IF p_mission_key = 'complete_3_tasks' THEN
     IF v_completed_tasks < 3 THEN

@@ -9,7 +9,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { ProgressionRoadmap } from "@/components/gamification/progression-roadmap";
 import { MentalDesk } from "@/components/dashboard/mental-desk";
 import { CheckCircle2, Clock, ListTodo, AlertCircle, Flame, Calendar as CalIcon, Gift } from "lucide-react";
-import { format, isToday, isPast, startOfDay, endOfDay, differenceInCalendarDays, subDays } from "date-fns";
+import { format, isToday, startOfDay, differenceInCalendarDays, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -37,6 +37,16 @@ function formatMissionTimer(seconds: number) {
   const mins = Math.floor(safe / 60).toString().padStart(2, "0");
   const secs = (safe % 60).toString().padStart(2, "0");
   return `${mins}:${secs}`;
+}
+
+function localDateKey(value: string | Date | null | undefined) {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return format(new Date(value), "yyyy-MM-dd");
+}
+
+function isSameLocalDay(value: string | Date | null | undefined, dayKey: string) {
+  return localDateKey(value) === dayKey;
 }
 
 export function DashboardView() {
@@ -71,13 +81,15 @@ export function DashboardView() {
 
   const stats = useMemo(() => {
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
 
     const pending = tasks.filter((t) => t.status !== "done").length;
-    const completedToday = tasks.filter((t) => t.completed_at && new Date(t.completed_at) >= todayStart && new Date(t.completed_at) <= todayEnd).length;
-    const overdue = tasks.filter((t) => t.due_date && t.status !== "done" && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))).length;
+    const completedToday = tasks.filter((t) => t.status === "done" && isSameLocalDay(t.completed_at ?? t.updated_at, todayKey)).length;
+    const overdue = tasks.filter((t) => {
+      const dueKey = localDateKey(t.due_date);
+      return dueKey != null && t.status !== "done" && dueKey < todayKey;
+    }).length;
     const inProgress = tasks.filter((t) => t.status === "in_progress").length;
+    const todayStart = startOfDay(now);
 
     // streak: consecutive days with at least one completed focus session
     const focusDays = new Set(
@@ -96,7 +108,7 @@ export function DashboardView() {
     const focusMinutesToday = Math.floor(focusSecondsToday / 60);
 
     return { pending, completedToday, overdue, inProgress, streak, focusMinutesToday, focusSecondsToday };
-  }, [tasks, sessions]);
+  }, [tasks, sessions, todayKey]);
 
   const upcoming = useMemo(() => {
     const now = new Date();
@@ -110,8 +122,8 @@ export function DashboardView() {
     return tasks
       .filter((t) => {
         const plannedFor = (t as typeof t & { planned_for?: string | null }).planned_for;
-        const plannedToday = plannedFor ? isToday(new Date(`${plannedFor}T00:00:00`)) : false;
-        const dueToday = t.due_date ? isToday(new Date(t.due_date)) : false;
+        const plannedToday = isSameLocalDay(plannedFor, todayKey);
+        const dueToday = isSameLocalDay(t.due_date, todayKey);
         return (plannedToday || dueToday) && t.status !== "done";
       })
       .sort((a, b) => {
@@ -120,7 +132,7 @@ export function DashboardView() {
         return aDue - bDue;
       })
       .slice(0, 6);
-  }, [tasks]);
+  }, [tasks, todayKey]);
 
   const recent = useMemo(() => {
     return [...tasks]

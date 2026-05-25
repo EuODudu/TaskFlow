@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, MoreVertical, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -224,6 +225,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
         status: "done",
         column_id: doneColumn?.id ?? task.column_id,
         position: doneTasks.length,
+        completed_at: new Date().toISOString(),
       })
       .eq("id", task.id);
     if (error) return toast.error(error.message);
@@ -233,7 +235,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
   };
 
   const planTaskToday = async (task: Task) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = format(new Date(), "yyyy-MM-dd");
     const { error } = await (supabase as any)
       .from("tasks")
       .update({ planned_for: today })
@@ -286,20 +288,27 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
     const affectedColumns = new Set<string>([targetColumnId]);
     if (sourceColumnId) affectedColumns.add(sourceColumnId);
 
-    const updates: { id: string; column_id: string; position: number; status: Task["status"] }[] = [];
+    const completedAt = new Date().toISOString();
+    const updates: { id: string; column_id: string; position: number; status: Task["status"]; completed_at?: string | null }[] = [];
     for (const colId of affectedColumns) {
       const list = liveMap.get(colId) ?? [];
       list.forEach((t, i) => {
         const before = baseline.find((b) => b.id === t.id);
         const status =
           t.id === draggedTask.id && colId === targetColumnId ? statusForColumn : t.status;
+        const completed_at =
+          t.id === draggedTask.id
+            ? status === "done"
+              ? (before?.completed_at ?? completedAt)
+              : null
+            : t.completed_at;
         if (
           !before ||
           before.column_id !== colId ||
           before.position !== i ||
-          (t.id === draggedTask.id && before.status !== status)
+          (t.id === draggedTask.id && (before.status !== status || before.completed_at !== completed_at))
         ) {
-          updates.push({ id: t.id, column_id: colId, position: i, status });
+          updates.push({ id: t.id, column_id: colId, position: i, status, completed_at });
         }
       });
     }
@@ -309,7 +318,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
     qc.setQueryData<Task[]>(qk.tasks(projectId), (old = []) =>
       old.map((t) => {
         const u = updates.find((x) => x.id === t.id);
-        return u ? { ...t, column_id: u.column_id, position: u.position, status: u.status } : t;
+        return u ? { ...t, column_id: u.column_id, position: u.position, status: u.status, completed_at: u.completed_at ?? null } : t;
       }),
     );
 
@@ -317,7 +326,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
       updates.map((u) =>
         supabase
           .from("tasks")
-          .update({ column_id: u.column_id, position: u.position, status: u.status })
+          .update({ column_id: u.column_id, position: u.position, status: u.status, completed_at: u.completed_at ?? null })
           .eq("id", u.id),
       ),
     );

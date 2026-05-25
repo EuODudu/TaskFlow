@@ -89,6 +89,11 @@ CREATE POLICY "daily_active_time_own" ON public.daily_active_time
 -- 3. Missões diárias: função de resgate
 -- =========================================================
 
+UPDATE public.tasks
+SET completed_at = COALESCE(completed_at, updated_at, now())
+WHERE status = 'done'
+  AND completed_at IS NULL;
+
 CREATE OR REPLACE FUNCTION public.claim_daily_mission(p_mission_key TEXT)
 RETURNS TABLE(mission_key TEXT, xp_reward INT, coins_reward INT)
 LANGUAGE plpgsql
@@ -97,7 +102,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_user_id UUID := auth.uid();
-  v_today DATE := CURRENT_DATE;
+  v_today DATE := (now() AT TIME ZONE 'America/Sao_Paulo')::date;
   v_completed_tasks INT := 0;
   v_focus_seconds INT := 0;
   v_overdue_count INT := 0;
@@ -122,8 +127,7 @@ BEGIN
   FROM public.tasks
   WHERE owner_id = v_user_id
     AND status = 'done'
-    AND completed_at >= v_today::timestamptz
-    AND completed_at < (v_today + 1)::timestamptz;
+    AND COALESCE(completed_at, updated_at)::date = v_today;
 
   SELECT COALESCE(active_seconds, 0) INTO v_focus_seconds
   FROM public.daily_active_time
@@ -137,8 +141,7 @@ BEGIN
       FROM public.pomodoro_sessions
       WHERE user_id = v_user_id
         AND kind = 'focus'
-        AND started_at >= v_today::timestamptz
-        AND started_at < (v_today + 1)::timestamptz
+        AND started_at::date = v_today
     ), 0)
   ) INTO v_focus_seconds;
 
@@ -148,7 +151,7 @@ BEGIN
     AND status <> 'done'
     AND archived_at IS NULL
     AND due_date IS NOT NULL
-    AND due_date < v_today::timestamptz;
+    AND due_date::date < v_today;
 
   IF p_mission_key = 'complete_3_tasks' THEN
     IF v_completed_tasks < 3 THEN
@@ -181,8 +184,10 @@ BEGIN
       last_active_date = v_today
   WHERE id = v_user_id;
 
-  INSERT INTO public.xp_events (user_id, amount, reason)
-  VALUES (v_user_id, v_xp, 'daily_mission');
+  IF v_xp > 0 THEN
+    INSERT INTO public.xp_events (user_id, amount, reason)
+    VALUES (v_user_id, v_xp, 'daily_mission');
+  END IF;
 
   RETURN QUERY SELECT p_mission_key, v_xp, v_coins;
 END;
