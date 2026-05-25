@@ -7,8 +7,28 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
-import { AnimatePresence, motion, type PanInfo } from "framer-motion";
-import { Brain, Check, ListTodo, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  type PanInfo,
+} from "framer-motion";
+import {
+  Brain,
+  Check,
+  Crosshair,
+  ListTodo,
+  Maximize2,
+  Minimize2,
+  Move,
+  Pin,
+  PinOff,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,37 +61,70 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type Props = { userId: string };
+type Particle = { id: number; x: number; y: number; color: string };
 
-const POST_IT_STYLE: Record<MentalNoteType, { paper: string; pin: string; tape: string; label: string }> = {
+const NOTE_STYLE: Record<
+  MentalNoteType,
+  {
+    label: string;
+    accent: string;
+    bg: string;
+    border: string;
+    glow: string;
+    width: string;
+    minHeight: string;
+    pin: string;
+  }
+> = {
   priority: {
-    paper: "from-yellow-100 via-amber-50 to-yellow-200",
-    pin: "bg-sky-500",
-    tape: "bg-sky-200/55",
     label: "Prioridade",
+    accent: "#38bdf8",
+    bg: "from-sky-300/18 via-slate-950/88 to-blue-500/14",
+    border: "border-sky-300/35",
+    glow: "shadow-[0_20px_70px_rgba(56,189,248,0.22)]",
+    width: "w-[184px]",
+    minHeight: "min-h-[150px]",
+    pin: "from-zinc-200 to-slate-500",
   },
   idea: {
-    paper: "from-violet-100 via-fuchsia-50 to-purple-100",
-    pin: "bg-violet-500",
-    tape: "bg-violet-200/55",
     label: "Ideia",
+    accent: "#a78bfa",
+    bg: "from-violet-300/18 via-slate-950/88 to-fuchsia-500/14",
+    border: "border-violet-300/35",
+    glow: "shadow-[0_20px_72px_rgba(167,139,250,0.22)]",
+    width: "w-[190px]",
+    minHeight: "min-h-[154px]",
+    pin: "from-violet-200 to-violet-600",
   },
   quick: {
-    paper: "from-lime-100 via-green-50 to-emerald-100",
-    pin: "bg-emerald-500",
-    tape: "bg-emerald-200/55",
     label: "Rápida",
+    accent: "#34d399",
+    bg: "from-emerald-300/14 via-slate-950/88 to-cyan-500/10",
+    border: "border-emerald-300/28",
+    glow: "shadow-[0_18px_56px_rgba(52,211,153,0.16)]",
+    width: "w-[158px]",
+    minHeight: "min-h-[126px]",
+    pin: "from-emerald-200 to-emerald-600",
   },
   urgent: {
-    paper: "from-rose-100 via-red-50 to-orange-100",
-    pin: "bg-red-500",
-    tape: "bg-red-200/55",
     label: "Urgente",
+    accent: "#fb7185",
+    bg: "from-rose-400/20 via-slate-950/88 to-orange-500/14",
+    border: "border-rose-300/40",
+    glow: "shadow-[0_0_34px_rgba(251,113,133,0.26),0_20px_72px_rgba(244,63,94,0.16)]",
+    width: "w-[186px]",
+    minHeight: "min-h-[152px]",
+    pin: "from-red-200 to-rose-600",
   },
   brain_dump: {
-    paper: "from-amber-100 via-yellow-50 to-orange-100",
-    pin: "bg-amber-500",
-    tape: "bg-amber-200/55",
     label: "Brain Dump",
+    accent: "#f59e0b",
+    bg: "from-amber-300/18 via-slate-950/88 to-purple-500/12",
+    border: "border-amber-300/35",
+    glow: "shadow-[0_22px_76px_rgba(245,158,11,0.18)]",
+    width: "w-[218px]",
+    minHeight: "min-h-[176px]",
+    pin: "from-amber-200 to-orange-600",
   },
 };
 
@@ -98,8 +151,12 @@ export function MentalDesk({ userId }: Props) {
   const { data: columns = [] } = useColumns(projectId);
   const inv = useInvalidate();
   const isMobile = useIsMobile();
-  const boardRef = useRef<HTMLDivElement>(null);
-  const [crumplingIds, setCrumplingIds] = useState<Set<string>>(new Set());
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const particleId = useRef(0);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [foldingIds, setFoldingIds] = useState<Set<string>>(new Set());
 
   const {
     filterType,
@@ -117,10 +174,24 @@ export function MentalDesk({ userId }: Props) {
     const visible = notes.filter((note) => (!note.is_completed || note.is_pinned) && !note.archived_at);
     return filterType === "all" ? visible : visible.filter((note) => note.note_type === filterType);
   }, [filterType, notes]);
-
   const activeCount = notes.filter((note) => !note.is_completed && !note.archived_at).length;
+  const urgentCount = notes.filter((note) => !note.is_completed && (note.note_type === "urgent" || note.priority === "urgent")).length;
   const expandedNote = notes.find((note) => note.id === expandedNoteId) ?? null;
+
   const refresh = () => inv.mentalNotes(userId);
+
+  const emitParticles = (x: number, y: number, color: string) => {
+    const burst = Array.from({ length: 7 }).map((_, index) => ({
+      id: ++particleId.current,
+      x: x + Math.cos(index) * 8,
+      y: y + Math.sin(index) * 8,
+      color,
+    }));
+    setParticles((current) => [...current, ...burst]);
+    setTimeout(() => {
+      setParticles((current) => current.filter((particle) => !burst.some((p) => p.id === particle.id)));
+    }, 850);
+  };
 
   const patchNote = async (id: string, patch: Partial<MentalNoteRow>) => {
     const { error } = await supabase.from("mental_notes").update(patch).eq("id", id).eq("user_id", userId);
@@ -156,7 +227,7 @@ export function MentalDesk({ userId }: Props) {
 
     closeComposer();
     refresh();
-    toast.success("Nota pregada no quadro!");
+    toast.success("Nota adicionada ao canvas.");
   };
 
   const togglePin = async (note: MentalNote) => {
@@ -170,13 +241,13 @@ export function MentalDesk({ userId }: Props) {
     }
 
     setExpandedNoteId(null);
-    setCrumplingIds((ids) => new Set(ids).add(note.id));
+    setFoldingIds((ids) => new Set(ids).add(note.id));
     setTimeout(async () => {
       await patchNote(note.id, {
         is_completed: true,
         completed_at: new Date().toISOString(),
       });
-      setCrumplingIds((ids) => {
+      setFoldingIds((ids) => {
         const next = new Set(ids);
         next.delete(note.id);
         return next;
@@ -187,19 +258,18 @@ export function MentalDesk({ userId }: Props) {
   const archiveNote = async (note: MentalNote) => {
     await patchNote(note.id, { archived_at: new Date().toISOString() });
     setExpandedNoteId(null);
-    toast.success("Nota removida do quadro.");
+    toast.success("Nota removida.");
   };
 
   const savePosition = useDebouncedCallback(async (id: string, x: number, y: number) => {
     await patchNote(id, { x, y });
-  }, 360);
+  }, 340);
 
   const convertToTask = async (note: MentalNote) => {
     if (!projectId) {
       toast.error("Crie um projeto no menu lateral antes de converter em tarefa.");
       return;
     }
-
     const column = columns[0];
     if (!column) {
       toast.error("Adicione uma coluna no Kanban primeiro.");
@@ -231,7 +301,6 @@ export function MentalDesk({ userId }: Props) {
       is_completed: true,
       completed_at: new Date().toISOString(),
     });
-
     if (ok) {
       inv.tasks(projectId);
       setExpandedNoteId(null);
@@ -240,51 +309,54 @@ export function MentalDesk({ userId }: Props) {
   };
 
   return (
-    <Card className="overflow-hidden border-amber-200/40 bg-[#f4e2b8] p-0 shadow-sm dark:border-amber-900/30 dark:bg-[#17120b]">
-      <div className="border-b border-amber-900/10 bg-amber-50/80 px-5 py-4 dark:border-amber-100/10 dark:bg-amber-950/20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-amber-950 dark:text-amber-50">Mesa Mental</h2>
-            <p className="mt-1 text-xs text-amber-900/65 dark:text-amber-100/55">
-              Um quadro de avisos simples para pregar ideias rápidas e mover post-its.
-            </p>
+    <Card className="relative overflow-hidden border-white/10 bg-[#050812] p-0 shadow-[0_28px_100px_rgba(2,6,23,0.42)]">
+      <DigitalAmbient />
+
+      <div className="relative space-y-4 p-5">
+        <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-200/65">Canvas vivo de produtividade</p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-white">Mesa Mental</h2>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/55">
+                Um workspace digital para ideias soltas, urgências e pensamentos que ainda não viraram tarefa.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <HudPill label="Ativas" value={activeCount} />
+              <HudPill label="Urgentes" value={urgentCount} tone="danger" />
+              <Button size="sm" variant="outline" className="gap-1.5 border-white/12 bg-white/8 text-white hover:bg-white/14" onClick={openQuickComposer}>
+                <Plus className="size-3.5" />
+                Nota
+              </Button>
+              <Button size="sm" className="gap-1.5 bg-cyan-500/90 text-slate-950 hover:bg-cyan-400" onClick={openBrainDump}>
+                <Brain className="size-3.5" />
+                Brain Dump
+              </Button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-amber-900/15 bg-white/65 px-3 py-1 text-xs font-semibold text-amber-950 shadow-sm dark:border-amber-100/10 dark:bg-white/10 dark:text-amber-50">
-              {activeCount} nota(s)
-            </span>
-            <Button size="sm" variant="outline" className="gap-1.5 bg-white/70" onClick={openQuickComposer}>
-              <Plus className="size-3.5" />
-              Nova nota
-            </Button>
-            <Button size="sm" className="gap-1.5" onClick={openBrainDump}>
-              <Brain className="size-3.5" />
-              Brain Dump
-            </Button>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {MENTAL_NOTE_TYPES.map((type) => (
+              <button
+                key={type.value}
+                onClick={() => setFilterType(type.value)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[11px] font-bold transition-all",
+                  filterType === type.value
+                    ? "border-white/25 bg-white/18 text-white shadow-[0_0_22px_rgba(34,211,238,0.18)]"
+                    : "border-white/10 bg-white/[0.055] text-white/55 hover:border-white/20 hover:bg-white/10 hover:text-white",
+                )}
+                style={{ boxShadow: filterType === type.value ? `0 0 20px ${type.accent}28` : undefined }}
+              >
+                <span className="mr-1.5">{type.emoji}</span>
+                {type.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {MENTAL_NOTE_TYPES.map((type) => (
-            <button
-              key={type.value}
-              onClick={() => setFilterType(type.value)}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                filterType === type.value
-                  ? "border-amber-900/30 bg-amber-900 text-amber-50 dark:bg-amber-100 dark:text-amber-950"
-                  : "border-amber-900/15 bg-white/55 text-amber-950/65 hover:bg-white/85 dark:border-amber-100/10 dark:bg-white/8 dark:text-amber-50/65",
-              )}
-            >
-              <span className="mr-1">{type.emoji}</span>
-              {type.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-4 p-4">
         <AnimatePresence mode="wait">
           {composerMode !== "closed" && (
             <NoteComposer
@@ -311,23 +383,19 @@ export function MentalDesk({ userId }: Props) {
         </AnimatePresence>
 
         {isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-36 animate-pulse rounded-xl bg-amber-900/10" />
-            ))}
-          </div>
+          <LoadingCanvas />
         ) : filtered.length === 0 ? (
-          <EmptyBoard onCreate={openQuickComposer} />
+          <EmptyCanvas onCreate={openQuickComposer} />
         ) : isMobile ? (
           <div className="grid gap-3">
             <AnimatePresence>
               {filtered.map((note, index) => (
-                <PostItNote
+                <GlassNote
                   key={note.id}
                   note={note}
                   index={index}
-                  dragging={false}
-                  crumpling={crumplingIds.has(note.id)}
+                  draggable={false}
+                  folding={foldingIds.has(note.id)}
                   onExpand={() => setExpandedNoteId(note.id)}
                   onTogglePin={() => togglePin(note)}
                   onToggleComplete={() => toggleComplete(note)}
@@ -336,71 +404,184 @@ export function MentalDesk({ userId }: Props) {
             </AnimatePresence>
           </div>
         ) : (
-          <BulletinBoard boardRef={boardRef}>
+          <DigitalCanvas
+            canvasRef={canvasRef}
+            pan={pan}
+            zoom={zoom}
+            setPan={setPan}
+            setZoom={setZoom}
+            particles={particles}
+          >
             <AnimatePresence>
               {filtered.map((note, index) => (
-                <PostItNote
+                <GlassNote
                   key={note.id}
                   note={note}
                   index={index}
-                  dragging
-                  boardRef={boardRef}
-                  crumpling={crumplingIds.has(note.id)}
+                  draggable
+                  canvasRef={canvasRef}
+                  pan={pan}
+                  zoom={zoom}
+                  folding={foldingIds.has(note.id)}
                   onExpand={() => setExpandedNoteId(note.id)}
                   onTogglePin={() => togglePin(note)}
                   onToggleComplete={() => toggleComplete(note)}
-                  onDragEnd={(x, y) => savePosition(note.id, x, y)}
+                  onDragEnd={(x, y, info) => {
+                    savePosition(note.id, x, y);
+                    emitParticles(info.point.x, info.point.y, NOTE_STYLE[note.note_type].accent);
+                  }}
                 />
               ))}
             </AnimatePresence>
-          </BulletinBoard>
+          </DigitalCanvas>
         )}
       </div>
     </Card>
   );
 }
 
-function BulletinBoard({
-  boardRef,
-  children,
-}: {
-  boardRef: RefObject<HTMLDivElement | null>;
-  children: React.ReactNode;
-}) {
+function HudPill({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "danger" }) {
   return (
-    <div className="rounded-[1.6rem] bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-300 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_18px_45px_rgba(120,53,15,0.16)]">
-      <div className="rounded-[1.25rem] border-[10px] border-[#c99a55] bg-[#b98543] p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22),inset_0_0_60px_rgba(73,34,10,0.20)]">
-        <div
-          ref={boardRef}
-          className="relative min-h-[430px] overflow-hidden rounded-xl border border-amber-950/10 shadow-inner"
-          style={{
-            backgroundColor: "#b98345",
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(255,255,255,.16) 1px, transparent 0), radial-gradient(circle at 3px 4px, rgba(79,38,12,.16) 1px, transparent 0), linear-gradient(90deg, rgba(255,255,255,.05), transparent 45%, rgba(0,0,0,.04))",
-            backgroundSize: "8px 8px, 11px 11px, 100% 100%",
-          }}
-        >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,244,214,0.22),transparent_48%)]" />
-          {children}
-        </div>
-      </div>
+    <div className={cn(
+      "rounded-2xl border px-3 py-2 text-right backdrop-blur",
+      tone === "danger" ? "border-rose-400/20 bg-rose-500/10 text-rose-100" : "border-white/10 bg-white/[0.07] text-white",
+    )}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/40">{label}</p>
+      <p className="text-sm font-black">{value}</p>
     </div>
   );
 }
 
-function EmptyBoard({ onCreate }: { onCreate: () => void }) {
+function DigitalAmbient() {
   return (
-    <div className="rounded-[1.6rem] bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-300 p-3">
-      <div className="rounded-[1.25rem] border-[10px] border-[#c99a55] bg-[#b98543] p-8 text-center shadow-inner">
-        <div className="mx-auto max-w-sm rounded-xl bg-yellow-100 p-5 text-amber-950 shadow-lg rotate-[-1deg]">
-          <div className="mx-auto -mt-8 mb-2 size-5 rounded-full bg-red-500 shadow-md" />
-          <p className="font-bold">Quadro vazio</p>
-          <p className="mt-1 text-sm text-amber-900/70">Pregue sua primeira nota para começar.</p>
-          <Button size="sm" className="mt-4 gap-1.5" onClick={onCreate}>
-            <Plus className="size-3.5" />
-            Criar nota
-          </Button>
-        </div>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(14,165,233,0.24),transparent_34%),radial-gradient(circle_at_86%_12%,rgba(124,58,237,0.22),transparent_34%),radial-gradient(circle_at_58%_90%,rgba(6,182,212,0.12),transparent_38%),linear-gradient(145deg,#050812,#0a1022_50%,#090712)]" />
+      <div className="absolute inset-0 opacity-[0.10] [background-image:linear-gradient(rgba(255,255,255,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.16)_1px,transparent_1px)] [background-size:44px_44px]" />
+      <div className="absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle,white_1px,transparent_1px)] [background-size:20px_20px]" />
+      <motion.div
+        className="absolute -left-24 top-10 size-72 rounded-full bg-cyan-400/16 blur-3xl"
+        animate={{ x: [0, 28, -18, 0], y: [0, -14, 18, 0], opacity: [0.22, 0.38, 0.25] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute -right-24 top-4 size-80 rounded-full bg-violet-500/16 blur-3xl"
+        animate={{ x: [0, -24, 14, 0], y: [0, 16, -12, 0], opacity: [0.18, 0.34, 0.2] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </div>
+  );
+}
+
+function DigitalCanvas({
+  canvasRef,
+  pan,
+  zoom,
+  setPan,
+  setZoom,
+  particles,
+  children,
+}: {
+  canvasRef: RefObject<HTMLDivElement | null>;
+  pan: { x: number; y: number };
+  zoom: number;
+  setPan: (pan: { x: number; y: number }) => void;
+  setZoom: (zoom: number) => void;
+  particles: Particle[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      ref={canvasRef}
+      className="relative min-h-[570px] overflow-hidden rounded-[2rem] border border-white/10 bg-[#060b18]/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-50px_140px_rgba(14,165,233,0.07)]"
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(14,165,233,0.16),transparent_34%),radial-gradient(circle_at_78%_68%,rgba(168,85,247,0.14),transparent_36%)]" />
+      <div className="absolute inset-x-8 top-8 h-px bg-gradient-to-r from-transparent via-cyan-200/30 to-transparent" />
+      <div className="absolute inset-y-8 left-8 w-px bg-gradient-to-b from-transparent via-violet-200/20 to-transparent" />
+
+      <motion.div
+        drag
+        dragMomentum={false}
+        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+        onDragEnd={(_, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
+      />
+
+      <div className="absolute right-3 top-3 z-40 flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1 text-white/70 backdrop-blur-md">
+        <button
+          className="rounded-full p-1.5 hover:bg-white/10"
+          onClick={() => setZoom(Math.max(0.86, Number((zoom - 0.06).toFixed(2))))}
+        >
+          <Minimize2 className="size-3.5" />
+        </button>
+        <span className="min-w-10 text-center text-[10px] font-bold">{Math.round(zoom * 100)}%</span>
+        <button
+          className="rounded-full p-1.5 hover:bg-white/10"
+          onClick={() => setZoom(Math.min(1.14, Number((zoom + 0.06).toFixed(2))))}
+        >
+          <Maximize2 className="size-3.5" />
+        </button>
+      </div>
+
+      <div className="absolute bottom-3 left-3 z-40 flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-semibold text-white/45 backdrop-blur">
+        <Move className="size-3" />
+        arraste o fundo para mover o canvas
+      </div>
+
+      <ParticleBursts particles={particles} />
+      <motion.div
+        className="absolute inset-0 origin-top-left"
+        animate={{ x: pan.x, y: pan.y, scale: zoom }}
+        transition={{ type: "spring", stiffness: 150, damping: 24 }}
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+function ParticleBursts({ particles }: { particles: Particle[] }) {
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[90]">
+      <AnimatePresence>
+        {particles.map((particle, index) => (
+          <motion.span
+            key={particle.id}
+            className="absolute size-1.5 rounded-full"
+            style={{ left: particle.x, top: particle.y, backgroundColor: particle.color, boxShadow: `0 0 18px ${particle.color}` }}
+            initial={{ opacity: 0.9, scale: 1, x: 0, y: 0 }}
+            animate={{ opacity: 0, scale: 0, x: Math.cos(index * 1.5) * 54, y: Math.sin(index * 1.7) * 44 - 24 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.75, ease: "easeOut" }}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LoadingCanvas() {
+  return (
+    <div className="grid gap-3 rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="h-36 animate-pulse rounded-2xl bg-white/10" />
+      ))}
+    </div>
+  );
+}
+
+function EmptyCanvas({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="relative overflow-hidden rounded-[2rem] border border-dashed border-white/14 bg-white/[0.045] px-6 py-16 text-center shadow-inner">
+      <DigitalAmbient />
+      <div className="relative">
+        <Crosshair className="mx-auto size-9 text-cyan-300" />
+        <p className="mt-3 text-sm font-semibold text-white">Canvas livre</p>
+        <p className="mx-auto mt-1 max-w-md text-xs text-white/55">
+          Solte sua primeira nota e comece a organizar ideias em um espaço digital vivo.
+        </p>
+        <Button size="sm" className="mt-4 gap-1.5 bg-cyan-500 text-slate-950 hover:bg-cyan-400" onClick={onCreate}>
+          <Plus className="size-3.5" />
+          Criar nota
+        </Button>
       </div>
     </div>
   );
@@ -421,38 +602,39 @@ function NoteComposer({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8, rotate: -1 }}
-      animate={{ opacity: 1, y: 0, rotate: -0.5 }}
-      exit={{ opacity: 0, y: -8, rotate: 1 }}
-      className="mx-auto max-w-2xl rounded-xl border border-amber-900/15 bg-yellow-100 p-4 text-amber-950 shadow-lg"
+      initial={{ opacity: 0, y: -12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -12, scale: 0.98 }}
+      className="relative overflow-hidden rounded-3xl border border-white/12 bg-[#0b1020]/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl"
     >
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-bold">{mode === "brain_dump" ? "Brain Dump" : "Nova nota"}</p>
-        <button onClick={onClose} className="rounded-lg p-1 hover:bg-amber-900/10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,rgba(34,211,238,0.16),transparent_42%),linear-gradient(120deg,rgba(255,255,255,0.10),transparent_40%)]" />
+      <div className="relative mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold text-white">{mode === "brain_dump" ? "Brain Dump livre" : "Nova nota"}</p>
+        <button onClick={onClose} className="rounded-lg p-1 text-white/60 hover:bg-white/10 hover:text-white">
           <X className="size-4" />
         </button>
       </div>
-      <div className="space-y-2">
+      <div className="relative space-y-2">
         <Input
-          placeholder="Título da nota"
+          placeholder="Título curto"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          className="border-amber-900/15 bg-yellow-50"
+          className="border-white/10 bg-white/8 text-white placeholder:text-white/35"
         />
         <Textarea
-          placeholder={mode === "brain_dump" ? "Escreva livremente..." : "Conteúdo"}
+          placeholder={mode === "brain_dump" ? "Despeje tudo aqui sem filtro..." : "O que precisa lembrar?"}
           value={content}
           onChange={(event) => setContent(event.target.value)}
           rows={mode === "brain_dump" ? 5 : 3}
-          className="resize-none border-amber-900/15 bg-yellow-50"
+          className="resize-none border-white/10 bg-white/8 text-white placeholder:text-white/35"
         />
       </div>
-      <div className="mt-3 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onClose}>
+      <div className="relative mt-3 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" className="text-white/70 hover:text-white" onClick={onClose}>
           Cancelar
         </Button>
-        <Button size="sm" onClick={() => onCreate(type, title, content)}>
-          Pregar no quadro
+        <Button size="sm" className="bg-cyan-500 text-slate-950 hover:bg-cyan-400" onClick={() => onCreate(type, title, content)}>
+          Adicionar ao canvas
         </Button>
       </div>
     </motion.div>
@@ -492,32 +674,35 @@ function ExpandedNotePanel({
     debouncedSave(title, content, noteType, priority);
   }, [content, debouncedSave, noteType, priority, title]);
 
+  const meta = NOTE_TYPE_META[noteType];
+
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      className="overflow-hidden rounded-xl border border-amber-900/15 bg-yellow-50 p-4 text-amber-950 shadow-md"
+      initial={{ opacity: 0, height: 0, y: -8 }}
+      animate={{ opacity: 1, height: "auto", y: 0 }}
+      exit={{ opacity: 0, height: 0, y: -8 }}
+      className="relative overflow-hidden rounded-3xl border bg-[#090d1b]/92 p-4 shadow-[0_26px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+      style={{ borderColor: `${meta.accent}45` }}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-bold">Editar post-it</p>
-        <button onClick={onClose} className="rounded-lg p-1 hover:bg-amber-900/10">
+      <div className="pointer-events-none absolute inset-0" style={{ background: `radial-gradient(circle at 18% 0%, ${meta.accent}20, transparent 38%)` }} />
+      <div className="relative mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold text-white">{meta.emoji} Editando nota</p>
+        <button onClick={onClose} className="rounded-lg p-1 text-white/60 hover:bg-white/10 hover:text-white">
           <X className="size-4" />
         </button>
       </div>
-
-      <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+      <div className="relative grid gap-3 lg:grid-cols-[1fr_auto]">
         <div className="space-y-2">
-          <Input value={title} onChange={(event) => setTitle(event.target.value)} className="border-amber-900/15 bg-white/60" />
-          <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={4} className="resize-none border-amber-900/15 bg-white/60" />
+          <Input value={title} onChange={(event) => setTitle(event.target.value)} className="border-white/10 bg-white/8 text-white" />
+          <Textarea value={content} onChange={(event) => setContent(event.target.value)} rows={4} className="resize-none border-white/10 bg-white/8 text-white" />
           <div className="flex flex-wrap gap-2">
             {(Object.keys(NOTE_TYPE_META) as MentalNoteType[]).map((type) => (
               <button
                 key={type}
                 onClick={() => setNoteType(type)}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                  noteType === type ? "border-amber-900/35 bg-amber-900 text-amber-50" : "border-amber-900/15 bg-white/50",
+                  "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all",
+                  noteType === type ? "border-white/25 bg-white/14 text-white" : "border-white/10 text-white/55 hover:text-white",
                 )}
               >
                 {NOTE_TYPE_META[type].emoji} {NOTE_TYPE_META[type].label}
@@ -530,8 +715,8 @@ function ExpandedNotePanel({
                 key={item}
                 onClick={() => setPriority(item)}
                 className={cn(
-                  "rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase",
-                  priority === item ? "border-amber-900/35 bg-amber-900 text-amber-50" : "border-amber-900/15 bg-white/50 text-amber-950/65",
+                  "rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase transition-all",
+                  priority === item ? "border-cyan-300/40 bg-cyan-300/15 text-white" : "border-white/10 text-white/45 hover:text-white",
                 )}
               >
                 {item}
@@ -539,18 +724,17 @@ function ExpandedNotePanel({
             ))}
           </div>
         </div>
-
-        <div className="flex flex-col gap-2 lg:min-w-[150px]">
-          <Button size="sm" variant="outline" className="gap-1.5 bg-white/60" onClick={onTogglePin}>
+        <div className="flex flex-col gap-2 lg:min-w-[164px]">
+          <Button size="sm" variant="outline" className="gap-1.5 border-white/12 bg-white/8 text-white hover:bg-white/14" onClick={onTogglePin}>
             {note.is_pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
             {note.is_pinned ? "Desfixar" : "Fixar"}
           </Button>
-          <Button size="sm" variant="outline" className="gap-1.5 bg-white/60" onClick={onToggleComplete}>
+          <Button size="sm" variant="outline" className="gap-1.5 border-white/12 bg-white/8 text-white hover:bg-white/14" onClick={onToggleComplete}>
             <Check className="size-3.5" />
             Concluir
           </Button>
           {!note.converted_task_id && (
-            <Button size="sm" className="gap-1.5" onClick={onConvert}>
+            <Button size="sm" className="gap-1.5 bg-cyan-500 text-slate-950 hover:bg-cyan-400" onClick={onConvert}>
               <ListTodo className="size-3.5" />
               Virar tarefa
             </Button>
@@ -560,7 +744,7 @@ function ExpandedNotePanel({
               <Link to="/board">Ver no Kanban</Link>
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="gap-1.5 text-amber-950/60" onClick={onArchive}>
+          <Button size="sm" variant="ghost" className="gap-1.5 text-white/45 hover:text-white" onClick={onArchive}>
             <Trash2 className="size-3.5" />
             Remover
           </Button>
@@ -570,12 +754,14 @@ function ExpandedNotePanel({
   );
 }
 
-function PostItNote({
+function GlassNote({
   note,
   index,
-  dragging,
-  boardRef,
-  crumpling,
+  draggable,
+  canvasRef,
+  pan = { x: 0, y: 0 },
+  zoom = 1,
+  folding,
   onExpand,
   onTogglePin,
   onToggleComplete,
@@ -583,108 +769,138 @@ function PostItNote({
 }: {
   note: MentalNote;
   index: number;
-  dragging: boolean;
-  boardRef?: RefObject<HTMLDivElement | null>;
-  crumpling: boolean;
+  draggable: boolean;
+  canvasRef?: RefObject<HTMLDivElement | null>;
+  pan?: { x: number; y: number };
+  zoom?: number;
+  folding: boolean;
   onExpand: () => void;
   onTogglePin: () => void;
   onToggleComplete: () => void;
-  onDragEnd?: (x: number, y: number) => void;
+  onDragEnd?: (x: number, y: number, info: PanInfo) => void;
 }) {
-  const style = POST_IT_STYLE[note.note_type];
+  const meta = NOTE_STYLE[note.note_type];
   const forgotten = isForgottenNote(note);
+  const urgent = note.note_type === "urgent" || note.priority === "urgent";
   const rotation = note.rotation || noteRotation(note.id);
   const spawn = defaultSpawnPosition(index);
   const x = note.x > 0 || note.y > 0 ? note.x : spawn.x;
   const y = note.x > 0 || note.y > 0 ? note.y : spawn.y;
-  const isUrgent = note.note_type === "urgent" || note.priority === "urgent";
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const springX = useSpring(mouseX, { stiffness: 180, damping: 18 });
+  const springY = useSpring(mouseY, { stiffness: 180, damping: 18 });
+  const rotateY = useTransform(springX, [-0.5, 0.5], [-6, 6]);
+  const rotateX = useTransform(springY, [-0.5, 0.5], [5, -5]);
+
+  const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    mouseX.set((event.clientX - rect.left) / rect.width - 0.5);
+    mouseY.set((event.clientY - rect.top) / rect.height - 0.5);
+  };
+
+  const onMouseLeave = () => {
+    mouseX.set(0);
+    mouseY.set(0);
+  };
+
+  const foldAnimation = folding
+    ? {
+        opacity: [1, 0.85, 0],
+        scale: [1, 0.75, 0.2],
+        rotate: [rotation, rotation + 28, rotation + 150],
+        borderRadius: ["1.25rem", "1.4rem", "999px"],
+        filter: ["brightness(1)", "brightness(.9)", "brightness(.55)"],
+      }
+    : undefined;
 
   const content = (
     <>
-      <div className={cn("absolute left-1/2 top-[-11px] size-5 -translate-x-1/2 rounded-full shadow-[0_3px_6px_rgba(0,0,0,0.28)]", style.pin)}>
-        <span className="absolute left-1 top-1 size-1.5 rounded-full bg-white/50" />
-      </div>
-      <div className={cn("absolute left-5 right-5 top-2 h-5 rounded-sm opacity-70 rotate-[-2deg]", style.tape)} />
+      <div className="pointer-events-none absolute inset-0 rounded-[1.25rem] bg-[linear-gradient(130deg,rgba(255,255,255,0.22),transparent_34%,rgba(255,255,255,0.08)_72%,transparent)]" />
+      <div className="pointer-events-none absolute inset-x-4 top-2 h-px bg-white/35" />
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.18]"
-        style={{
-          backgroundImage: "linear-gradient(rgba(120,53,15,.25) 1px, transparent 1px)",
-          backgroundSize: "100% 22px",
-        }}
-      />
-      <div className="relative pt-3">
-        <div className="flex items-start justify-between gap-2">
-          <p className="line-clamp-2 text-base font-black leading-tight text-amber-950">{note.title}</p>
-          <div className="flex gap-0.5">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onTogglePin();
-              }}
-              className="rounded-md p-1 text-amber-950/55 hover:bg-amber-900/10 hover:text-amber-950"
-            >
-              {note.is_pinned ? <Pin className="size-3.5" /> : <PinOff className="size-3.5" />}
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleComplete();
-              }}
-              className="rounded-md p-1 text-amber-950/55 hover:bg-amber-900/10 hover:text-amber-950"
-            >
-              <Check className="size-3.5" />
-            </button>
-          </div>
-        </div>
+        className={cn("absolute left-1/2 top-[-8px] h-4 w-9 -translate-x-1/2 rounded-full bg-gradient-to-br shadow-md", meta.pin)}
+      >
+        <span className="absolute left-2 top-1 size-1 rounded-full bg-white/70" />
+      </div>
+      {note.note_type === "brain_dump" && (
+        <div className="pointer-events-none absolute bottom-5 right-5 h-8 w-16 rotate-[-12deg] rounded-[50%] border border-amber-300/20" />
+      )}
 
-        {note.content && (
-          <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed text-amber-950/78">{note.content}</p>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-amber-950/10 px-2 py-0.5 text-[10px] font-bold text-amber-950/60">
-            {style.label}
-          </span>
-          {isUrgent && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-800">urgente</span>}
-          {forgotten && <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-[10px] font-bold text-amber-800">rever</span>}
+      <div className="relative flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: meta.accent }}>
+            {NOTE_TYPE_META[note.note_type].emoji} {meta.label}
+          </p>
+          <p className="mt-1 line-clamp-2 text-sm font-black leading-tight text-white">{note.title}</p>
         </div>
+        <div className="flex gap-0.5 rounded-full bg-white/8 p-0.5">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePin();
+            }}
+            className="rounded-full p-1 text-white/55 hover:bg-white/12 hover:text-white"
+          >
+            {note.is_pinned ? <Pin className="size-3 text-cyan-300" /> : <PinOff className="size-3" />}
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleComplete();
+            }}
+            className="rounded-full p-1 text-white/55 hover:bg-white/12 hover:text-white"
+          >
+            <Check className="size-3" />
+          </button>
+        </div>
+      </div>
+
+      {note.content && (
+        <p className="relative mt-3 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed text-white/62">{note.content}</p>
+      )}
+
+      <div className="relative mt-3 flex flex-wrap items-center gap-1.5">
+        {urgent && <span className="rounded-full bg-rose-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-rose-200">urgente</span>}
+        {forgotten && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[9px] font-black uppercase text-amber-200">rever</span>}
+        {note.converted_task_id && <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[9px] font-black uppercase text-cyan-200">tarefa</span>}
       </div>
     </>
   );
 
-  const baseClass = cn(
-    "relative w-[172px] min-h-[148px] cursor-pointer rounded-[0.4rem] border border-amber-900/10 bg-gradient-to-br p-3 shadow-[0_12px_22px_rgba(67,36,11,0.22)]",
-    "before:pointer-events-none before:absolute before:bottom-0 before:right-0 before:size-7 before:rounded-tl-md before:bg-amber-950/10 before:shadow-[-2px_-2px_4px_rgba(255,255,255,0.25)]",
-    style.paper,
-    forgotten && "ring-2 ring-amber-700/25",
-    isUrgent && "shadow-[0_13px_26px_rgba(127,29,29,0.24)]",
+  const className = cn(
+    "relative cursor-pointer overflow-visible rounded-[1.25rem] border bg-gradient-to-br p-3 backdrop-blur-xl",
+    meta.width,
+    meta.minHeight,
+    meta.border,
+    meta.bg,
+    meta.glow,
+    forgotten && "ring-2 ring-amber-300/30",
+    urgent && "animate-pulse",
   );
 
-  const crumpleAnimation = crumpling
-    ? {
-        scale: [1, 0.86, 0.38],
-        rotate: [rotation, rotation + 18, rotation + 140],
-        x: dragging ? x + 260 : 80,
-        y: dragging ? y + 220 : 120,
-        opacity: [1, 0.8, 0],
-        borderRadius: ["0.4rem", "1.1rem", "999px"],
-        filter: ["brightness(1)", "brightness(.92)", "brightness(.75)"],
-      }
-    : undefined;
+  const style = {
+    borderColor: `${meta.accent}55`,
+    boxShadow: urgent ? `0 0 30px ${meta.accent}45, 0 24px 82px rgba(0,0,0,.30)` : undefined,
+    transformStyle: "preserve-3d",
+  } as CSSProperties;
 
-  if (!dragging) {
+  if (!draggable) {
     return (
       <motion.div
         layout
-        initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
-        animate={crumpleAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
-        exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-        transition={{ duration: crumpling ? 0.58 : 0.22, ease: "easeInOut" }}
-        className={baseClass}
+        initial={{ opacity: 0, scale: 0.92, rotate: rotation }}
+        animate={foldAnimation ?? { opacity: 1, scale: 1, rotate: rotation }}
+        exit={{ opacity: 0, scale: 0.8, rotate: rotation + 18 }}
+        transition={{ duration: folding ? 0.58 : 0.25, ease: "easeInOut" }}
+        className={className}
+        style={{ ...style, rotateX, rotateY }}
         onClick={onExpand}
-        whileHover={{ y: -3, scale: 1.015 }}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        whileHover={{ y: -5, scale: 1.02 }}
       >
         {content}
       </motion.div>
@@ -694,23 +910,27 @@ function PostItNote({
   return (
     <motion.div
       drag
-      dragMomentum={false}
-      dragElastic={0.06}
-      dragConstraints={boardRef}
-      initial={{ opacity: 0, scale: 0.94, rotate: rotation }}
-      animate={crumpleAnimation ?? { opacity: 1, scale: 1, x, y, rotate: rotation }}
-      exit={{ opacity: 0, scale: 0.8, rotate: rotation + 20 }}
-      transition={{ duration: crumpling ? 0.58 : 0.24, ease: "easeInOut" }}
-      whileHover={{ y: -4, scale: 1.025, rotate: rotation * 0.7, zIndex: 20 }}
-      whileDrag={{ scale: 1.04, rotate: 0, zIndex: 30, cursor: "grabbing" }}
-      className={cn(baseClass, "absolute left-0 top-0 touch-none")}
+      dragMomentum
+      dragTransition={{ bounceStiffness: 240, bounceDamping: 22, power: 0.16, timeConstant: 220 }}
+      dragElastic={0.1}
+      dragConstraints={canvasRef}
+      initial={{ opacity: 0, scale: 0.9, rotate: rotation + 5 }}
+      animate={foldAnimation ?? { opacity: 1, scale: 1, x, y, rotate: rotation }}
+      exit={{ opacity: 0, scale: 0.78, rotate: rotation + 18 }}
+      transition={{ type: "spring", stiffness: 160, damping: 18 }}
+      whileHover={{ scale: 1.04, zIndex: 30, rotate: rotation * 0.45 }}
+      whileDrag={{ scale: 1.08, zIndex: 60, rotate: 0, filter: "brightness(1.08)" }}
+      className={cn(className, "absolute left-0 top-0 touch-none")}
+      style={{ ...style, rotateX, rotateY }}
       onClick={onExpand}
-      onDragEnd={(_, info: PanInfo) => {
-        const nextX = Math.max(0, Math.round(x + info.offset.x));
-        const nextY = Math.max(0, Math.round(y + info.offset.y));
-        onDragEnd?.(nextX, nextY);
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDragEnd={(_, info) => {
+        const nextX = Math.max(0, Math.round(x + info.offset.x / zoom));
+        const nextY = Math.max(0, Math.round(y + info.offset.y / zoom));
+        onDragEnd?.(nextX, nextY, info);
       }}
-      style={{ transformOrigin: "50% 12%" } as CSSProperties}
     >
       {content}
     </motion.div>
