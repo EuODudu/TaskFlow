@@ -5,7 +5,6 @@ import {
   MouseSensor,
   TouchSensor,
   closestCorners,
-  getFirstCollision,
   pointerWithin,
   rectIntersection,
   useDroppable,
@@ -80,9 +79,12 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
 
   const collisionDetection: CollisionDetection = (args) => {
     const pointer = pointerWithin(args);
+    if (pointer.length > 0) return pointer;
+
     const intersection = rectIntersection(args);
-    const corners = closestCorners(args);
-    return getFirstCollision(pointer) ?? getFirstCollision(intersection) ?? getFirstCollision(corners) ?? [];
+    if (intersection.length > 0) return intersection;
+
+    return closestCorners(args);
   };
 
   const tasksByColumn = useMemo(() => {
