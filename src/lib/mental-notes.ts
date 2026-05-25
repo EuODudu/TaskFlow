@@ -52,7 +52,7 @@ const FORGOTTEN_MS = 3 * 24 * 60 * 60 * 1000;
 export function noteRotation(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((hash % 9) - 4) * 0.6;
+  return ((hash % 11) - 5) * 0.85;
 }
 
 export function isForgottenNote(note: MentalNote): boolean {
@@ -68,12 +68,22 @@ export function mapNoteToTaskPriority(note: Pick<MentalNote, "note_type" | "prio
 }
 
 export function defaultSpawnPosition(index: number): { x: number; y: number; rotation: number } {
-  const col = index % 3;
-  const row = Math.floor(index / 3);
+  const cluster = [
+    { x: 28, y: 34 },
+    { x: 210, y: 72 },
+    { x: 410, y: 36 },
+    { x: 108, y: 210 },
+    { x: 330, y: 236 },
+    { x: 560, y: 160 },
+    { x: 36, y: 356 },
+    { x: 250, y: 386 },
+  ];
+  const base = cluster[index % cluster.length];
+  const ring = Math.floor(index / cluster.length);
   return {
-    x: 16 + col * 168 + (row % 2) * 12,
-    y: 16 + row * 148,
-    rotation: ((index % 5) - 2) * 0.8,
+    x: base.x + ring * 34 + (index % 2) * 12,
+    y: base.y + ring * 28 - (index % 3) * 10,
+    rotation: ((index % 7) - 3) * 1.15,
   };
 }
 
