@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { MentalNoteType } from "@/lib/mental-notes";
 
 type UIState = {
   sidebarCollapsed: boolean;
@@ -208,3 +209,25 @@ export const usePomodoro = create<PomodoroState>()(
     }
   )
 );
+
+type MentalDeskUIState = {
+  filterType: MentalNoteType | "all";
+  expandedNoteId: string | null;
+  composerMode: "closed" | "quick" | "brain_dump";
+  setFilterType: (type: MentalNoteType | "all") => void;
+  setExpandedNoteId: (id: string | null) => void;
+  openQuickComposer: () => void;
+  openBrainDump: () => void;
+  closeComposer: () => void;
+};
+
+export const useMentalDeskUI = create<MentalDeskUIState>()((set) => ({
+  filterType: "all",
+  expandedNoteId: null,
+  composerMode: "closed",
+  setFilterType: (filterType) => set({ filterType }),
+  setExpandedNoteId: (expandedNoteId) => set({ expandedNoteId }),
+  openQuickComposer: () => set({ composerMode: "quick", expandedNoteId: null }),
+  openBrainDump: () => set({ composerMode: "brain_dump", expandedNoteId: null }),
+  closeComposer: () => set({ composerMode: "closed" }),
+}));

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { ProgressionRoadmap } from "@/components/gamification/progression-roadmap";
+import { MentalDesk } from "@/components/dashboard/mental-desk";
 import { CheckCircle2, Clock, ListTodo, AlertCircle, Flame, Calendar as CalIcon, Gift } from "lucide-react";
 import { format, isToday, isPast, startOfDay, endOfDay, differenceInCalendarDays, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -188,6 +189,8 @@ export function DashboardView() {
       </div>
 
       <ProgressionRoadmap xp={profile?.xp ?? 0} compact />
+
+      {user && <MentalDesk userId={user.id} />}
 
       <Card className="p-5">
         <div className="flex items-center justify-between mb-4">

@@ -146,6 +146,71 @@ export type Database = {
           },
         ]
       }
+      mental_notes: {
+        Row: {
+          archived_at: string | null
+          completed_at: string | null
+          content: string | null
+          converted_task_id: string | null
+          created_at: string
+          id: string
+          is_completed: boolean
+          is_pinned: boolean
+          note_type: string
+          priority: string
+          rotation: number
+          title: string
+          updated_at: string
+          user_id: string
+          x: number
+          y: number
+        }
+        Insert: {
+          archived_at?: string | null
+          completed_at?: string | null
+          content?: string | null
+          converted_task_id?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          is_pinned?: boolean
+          note_type?: string
+          priority?: string
+          rotation?: number
+          title?: string
+          updated_at?: string
+          user_id: string
+          x?: number
+          y?: number
+        }
+        Update: {
+          archived_at?: string | null
+          completed_at?: string | null
+          content?: string | null
+          converted_task_id?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          is_pinned?: boolean
+          note_type?: string
+          priority?: string
+          rotation?: number
+          title?: string
+          updated_at?: string
+          user_id?: string
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mental_notes_converted_task_id_fkey"
+            columns: ["converted_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pomodoro_sessions: {
         Row: {
           created_at: string

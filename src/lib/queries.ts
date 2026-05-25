@@ -16,6 +16,7 @@ export type UserBadge = Database["public"]["Tables"]["user_badges"]["Row"];
 export type AvatarItem = Database["public"]["Tables"]["avatar_items"]["Row"];
 export type UserAvatar = Database["public"]["Tables"]["user_avatar"]["Row"];
 export type XpEvent = Database["public"]["Tables"]["xp_events"]["Row"];
+export type MentalNoteRow = Database["public"]["Tables"]["mental_notes"]["Row"];
 
 export type LeaderboardEntry = {
   id: string;
@@ -39,6 +40,7 @@ export const qk = {
   checklist: (taskId: string) => ["checklist", taskId] as const,
   activity: (taskId: string) => ["activity", taskId] as const,
   pomodoroSessions: ["pomodoro-sessions"] as const,
+  mentalNotes: (userId: string) => ["mental-notes", userId] as const,
 };
 
 export function useProjects() {
@@ -226,8 +228,32 @@ export function useInvalidate() {
     xpEvents: (userId: string) => qc.invalidateQueries({ queryKey: ["xp-events", userId] }),
     officeItems: (userId: string) => qc.invalidateQueries({ queryKey: ["office-items", userId] }),
     ownedOfficeItems: (userId: string) => qc.invalidateQueries({ queryKey: ["owned-office-items", userId] }),
+    mentalNotes: (userId: string) => qc.invalidateQueries({ queryKey: qk.mentalNotes(userId) }),
     all: () => qc.invalidateQueries(),
   };
+}
+
+export function useMentalNotes(userId: string | undefined) {
+  return useQuery({
+    queryKey: qk.mentalNotes(userId ?? ""),
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("mental_notes")
+        .select("*")
+        .eq("user_id", userId!)
+        .is("archived_at", null)
+        .order("is_pinned", { ascending: false })
+        .order("updated_at", { ascending: false });
+      if (error) {
+        if (error.code === "PGRST205" || error.code === "42P01" || /mental_notes/i.test(error.message)) {
+          return [];
+        }
+        throw error;
+      }
+      return (data ?? []) as MentalNoteRow[];
+    },
+  });
 }
 
 export const priorityMeta: Record<TaskPriority, { label: string; color: string }> = {
