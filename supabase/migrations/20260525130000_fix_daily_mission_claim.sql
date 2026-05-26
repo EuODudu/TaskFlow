@@ -29,40 +29,40 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
-    FROM public.daily_mission_claims
-    WHERE user_id = v_user_id
-      AND mission_key = p_mission_key
-      AND mission_date = v_today
+    FROM public.daily_mission_claims AS dmc
+    WHERE dmc.user_id = v_user_id
+      AND dmc.mission_key = p_mission_key
+      AND dmc.mission_date = v_today
   ) THEN
     RAISE EXCEPTION 'Missão já resgatada hoje';
   END IF;
 
   SELECT COUNT(*) INTO v_completed_tasks
-  FROM public.tasks
-  WHERE owner_id = v_user_id
-    AND status = 'done'
-    AND COALESCE(completed_at, updated_at)::date = v_today;
+  FROM public.tasks AS t
+  WHERE t.owner_id = v_user_id
+    AND t.status = 'done'
+    AND COALESCE(t.completed_at, t.updated_at)::date = v_today;
 
   SELECT COALESCE(active_seconds, 0) INTO v_active_seconds
-  FROM public.daily_active_time
-  WHERE user_id = v_user_id
-    AND activity_date = v_today;
+  FROM public.daily_active_time AS dat
+  WHERE dat.user_id = v_user_id
+    AND dat.activity_date = v_today;
 
-  SELECT COALESCE(SUM(duration_seconds), 0)::INT INTO v_pomodoro_seconds
-  FROM public.pomodoro_sessions
-  WHERE user_id = v_user_id
-    AND kind = 'focus'
-    AND started_at::date = v_today;
+  SELECT COALESCE(SUM(ps.duration_seconds), 0)::INT INTO v_pomodoro_seconds
+  FROM public.pomodoro_sessions AS ps
+  WHERE ps.user_id = v_user_id
+    AND ps.kind = 'focus'
+    AND ps.started_at::date = v_today;
 
   v_focus_seconds := GREATEST(COALESCE(v_active_seconds, 0), COALESCE(v_pomodoro_seconds, 0));
 
   SELECT COUNT(*) INTO v_overdue_count
-  FROM public.tasks
-  WHERE owner_id = v_user_id
-    AND status <> 'done'
-    AND archived_at IS NULL
-    AND due_date IS NOT NULL
-    AND due_date::date < v_today;
+  FROM public.tasks AS t
+  WHERE t.owner_id = v_user_id
+    AND t.status <> 'done'
+    AND t.archived_at IS NULL
+    AND t.due_date IS NOT NULL
+    AND t.due_date::date < v_today;
 
   IF p_mission_key = 'complete_3_tasks' THEN
     IF v_completed_tasks < 3 THEN
@@ -87,18 +87,18 @@ BEGIN
   INSERT INTO public.daily_mission_claims (user_id, mission_key, mission_date, xp_reward, coins_reward)
   VALUES (v_user_id, p_mission_key, v_today, v_xp, v_coins);
 
-  UPDATE public.profiles
-  SET xp = xp + v_xp,
-      coins = coins + v_coins,
+  UPDATE public.profiles AS p
+  SET xp = p.xp + v_xp,
+      coins = p.coins + v_coins,
       last_active_date = v_today
-  WHERE id = v_user_id;
+  WHERE p.id = v_user_id;
 
   IF v_xp > 0 THEN
     INSERT INTO public.xp_events (user_id, amount, reason)
     VALUES (v_user_id, v_xp, 'daily_mission');
   END IF;
 
-  RETURN QUERY SELECT p_mission_key, v_xp, v_coins;
+  RETURN QUERY SELECT p_mission_key::TEXT, v_xp::INT, v_coins::INT;
 END;
 $$;
 

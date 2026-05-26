@@ -3,7 +3,7 @@ import type { MouseEvent, ReactNode } from "react";
 import { CSS } from "@dnd-kit/utilities";
 import { Calendar as CalIcon, CalendarClock, Check, CheckSquare, Clock, GripVertical, Sun } from "lucide-react";
 import { priorityMeta, type CalendarEvent, type Task } from "@/lib/queries";
-import { format, isToday } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,24 @@ type TaskCardProps = {
   checklistTotal?: number;
   scheduledEvent?: CalendarEvent;
 };
+
+function localDateKey(value: string | Date | null | undefined) {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?Z$/.test(value)) {
+    return value.slice(0, 10);
+  }
+  return format(new Date(value), "yyyy-MM-dd");
+}
+
+function isSameLocalDay(value: string | Date | null | undefined, dayKey: string) {
+  return localDateKey(value) === dayKey;
+}
+
+function formatDueDate(value: string | Date) {
+  const key = localDateKey(value);
+  return format(new Date(`${key}T12:00:00`), "d MMM", { locale: ptBR });
+}
 
 function TaskCardBody({
   task,
@@ -31,9 +49,13 @@ function TaskCardBody({
   dragHandle?: ReactNode;
   className?: string;
 }) {
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "done";
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const dueKey = localDateKey(task.due_date);
+  const isOverdue = !!dueKey && dueKey < todayKey && task.status !== "done";
   const plannedFor = (task as Task & { planned_for?: string | null }).planned_for;
-  const plannedToday = plannedFor ? isToday(new Date(`${plannedFor}T00:00:00`)) : false;
+  const plannedToday = isSameLocalDay(plannedFor, todayKey);
+  const dueToday = isSameLocalDay(task.due_date, todayKey);
+  const shouldShowTodayBadge = plannedToday || dueToday;
   const done = task.status === "done";
 
   const handleAction = (event: MouseEvent, action?: () => void) => {
@@ -58,7 +80,7 @@ function TaskCardBody({
         {task.due_date && (
           <span className={cn("flex items-center gap-1", isOverdue && "text-destructive")}>
             <CalIcon className="size-3" />
-            {format(new Date(task.due_date), "d MMM", { locale: ptBR })}
+            {formatDueDate(task.due_date)}
           </span>
         )}
         {!!checklistTotal && (
@@ -77,7 +99,7 @@ function TaskCardBody({
             {format(new Date(scheduledEvent.starts_at), "HH:mm")}–{format(new Date(scheduledEvent.ends_at), "HH:mm")}
           </span>
         )}
-        {plannedToday && (
+        {shouldShowTodayBadge && (
           <span className="flex items-center gap-1 text-primary">
             <Sun className="size-3" /> hoje
           </span>
@@ -102,7 +124,7 @@ function TaskCardBody({
               onClick={(e) => handleAction(e, onPlanToday)}
               className="inline-flex items-center gap-1 rounded-md border border-primary/30 px-2 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10"
             >
-              <Sun className="size-3" /> Hoje
+              <Sun className="size-3" /> Planejar
             </button>
           )}
         </div>

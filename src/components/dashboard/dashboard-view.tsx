@@ -42,11 +42,22 @@ function formatMissionTimer(seconds: number) {
 function localDateKey(value: string | Date | null | undefined) {
   if (!value) return null;
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?Z$/.test(value)) {
+    return value.slice(0, 10);
+  }
   return format(new Date(value), "yyyy-MM-dd");
 }
 
 function isSameLocalDay(value: string | Date | null | undefined, dayKey: string) {
   return localDateKey(value) === dayKey;
+}
+
+function taskDayLabel(value: string | Date | null | undefined, fallback = "Hoje") {
+  if (!value) return fallback;
+  if (typeof value === "string" && (/^\d{4}-\d{2}-\d{2}$/.test(value) || /T00:00:00(?:\.000)?Z$/.test(value))) {
+    return fallback;
+  }
+  return format(new Date(value), "HH:mm");
 }
 
 export function DashboardView() {
@@ -134,6 +145,16 @@ export function DashboardView() {
       .slice(0, 6);
   }, [tasks, todayKey]);
 
+  const overdueBacklog = useMemo(() => {
+    return tasks
+      .filter((t) => {
+        const dueKey = localDateKey(t.due_date);
+        return dueKey != null && dueKey < todayKey && t.status !== "done";
+      })
+      .sort((a, b) => (localDateKey(a.due_date) ?? "").localeCompare(localDateKey(b.due_date) ?? ""))
+      .slice(0, 6);
+  }, [tasks, todayKey]);
+
   const recent = useMemo(() => {
     return [...tasks]
       .sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at))
@@ -211,6 +232,37 @@ export function DashboardView() {
       <ProgressionRoadmap xp={profile?.xp ?? 0} compact />
 
       {user && <MentalDesk userId={user.id} />}
+
+      {overdueBacklog.length > 0 && (
+        <Card className="border-red-500/25 bg-red-500/5 p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="grid size-9 place-items-center rounded-lg bg-red-500/10 text-red-500">
+                <AlertCircle className="size-4" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Backlog de atrasadas</h2>
+                <p className="text-xs text-muted-foreground">Tarefas vencidas que precisam voltar para o radar.</p>
+              </div>
+            </div>
+            <Link to="/board" className="text-xs text-primary hover:underline">Abrir Kanban</Link>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {overdueBacklog.map((t) => {
+              const dueKey = localDateKey(t.due_date);
+              return (
+                <div key={t.id} className="flex items-center gap-3 rounded-lg border border-red-500/15 bg-background/60 p-2.5">
+                  <span className="size-2 rounded-full" style={{ background: priorityMeta[t.priority].color }} />
+                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                  <span className="shrink-0 text-xs font-medium text-red-500">
+                    {dueKey ? format(new Date(`${dueKey}T12:00:00`), "d MMM", { locale: ptBR }) : "Atrasada"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-5">
         <div className="flex items-center justify-between mb-4">
@@ -315,7 +367,7 @@ export function DashboardView() {
                 <span className="size-2 rounded-full" style={{ background: priorityMeta[t.priority].color }} />
                 <span className="text-sm flex-1">{t.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {t.due_date ? format(new Date(t.due_date), "HH:mm") : "Hoje"}
+                  {taskDayLabel(t.due_date)}
                 </span>
               </div>
             ))}
