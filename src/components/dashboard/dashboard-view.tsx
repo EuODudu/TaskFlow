@@ -129,21 +129,37 @@ export function DashboardView() {
       .slice(0, 6);
   }, [events]);
 
+  const todayScheduleByTaskId = useMemo(() => {
+    const map = new Map<string, (typeof events)[number]>();
+    const todayTaskEvents = events
+      .filter((e) => e.type === "task" && e.task_id && isSameLocalDay(e.starts_at, todayKey))
+      .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
+
+    for (const event of todayTaskEvents) {
+      if (event.task_id && !map.has(event.task_id)) map.set(event.task_id, event);
+    }
+
+    return map;
+  }, [events, todayKey]);
+
   const todays = useMemo(() => {
     return tasks
       .filter((t) => {
         const plannedFor = (t as typeof t & { planned_for?: string | null }).planned_for;
         const plannedToday = isSameLocalDay(plannedFor, todayKey);
         const dueToday = isSameLocalDay(t.due_date, todayKey);
-        return (plannedToday || dueToday) && t.status !== "done";
+        const scheduledToday = todayScheduleByTaskId.has(t.id);
+        return (plannedToday || dueToday || scheduledToday) && t.status !== "done";
       })
       .sort((a, b) => {
-        const aDue = a.due_date ? +new Date(a.due_date) : Number.MAX_SAFE_INTEGER;
-        const bDue = b.due_date ? +new Date(b.due_date) : Number.MAX_SAFE_INTEGER;
+        const aSchedule = todayScheduleByTaskId.get(a.id);
+        const bSchedule = todayScheduleByTaskId.get(b.id);
+        const aDue = aSchedule ? +new Date(aSchedule.starts_at) : a.due_date ? +new Date(a.due_date) : Number.MAX_SAFE_INTEGER;
+        const bDue = bSchedule ? +new Date(bSchedule.starts_at) : b.due_date ? +new Date(b.due_date) : Number.MAX_SAFE_INTEGER;
         return aDue - bDue;
       })
       .slice(0, 6);
-  }, [tasks, todayKey]);
+  }, [tasks, todayKey, todayScheduleByTaskId]);
 
   const overdueBacklog = useMemo(() => {
     return tasks
@@ -362,15 +378,18 @@ export function DashboardView() {
           </div>
           <div className="space-y-2">
             {todays.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Nada vencendo hoje. Aproveite ✨</p>}
-            {todays.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent">
-                <span className="size-2 rounded-full" style={{ background: priorityMeta[t.priority].color }} />
-                <span className="text-sm flex-1">{t.title}</span>
-                <span className="text-xs text-muted-foreground">
-                  {taskDayLabel(t.due_date)}
-                </span>
-              </div>
-            ))}
+            {todays.map((t) => {
+              const scheduled = todayScheduleByTaskId.get(t.id);
+              return (
+                <div key={t.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-accent">
+                  <span className="size-2 rounded-full" style={{ background: priorityMeta[t.priority].color }} />
+                  <span className="text-sm flex-1">{t.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {scheduled ? taskDayLabel(scheduled.starts_at) : taskDayLabel(t.due_date)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </Card>
 
