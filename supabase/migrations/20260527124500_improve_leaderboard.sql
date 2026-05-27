@@ -14,7 +14,20 @@ RETURNS TABLE(
   rank_position INT,
   total_users INT,
   face_emoji TEXT,
-  bg_color TEXT
+  bg_color TEXT,
+  accessory_emoji TEXT,
+  pet_emoji TEXT,
+  skin_tone TEXT,
+  hair_color TEXT,
+  hair_style TEXT,
+  clothes_color TEXT,
+  accessory_head TEXT,
+  accessory_face TEXT,
+  accessory_back TEXT,
+  accessory_hand TEXT,
+  accessory_chest TEXT,
+  aura_emoji TEXT,
+  pose TEXT
 )
 LANGUAGE SQL
 SECURITY DEFINER
@@ -43,7 +56,20 @@ AS $$
       )::INT AS rank_position,
       COUNT(*) OVER ()::INT AS total_users,
       COALESCE(ua.face_emoji, '🧑') AS face_emoji,
-      COALESCE(ua.bg_color, '#6366f1') AS bg_color
+      COALESCE(ua.bg_color, '#6366f1') AS bg_color,
+      ua.accessory_emoji,
+      ua.pet_emoji,
+      ua.skin_tone,
+      ua.hair_color,
+      ua.hair_style,
+      ua.clothes_color,
+      ua.accessory_head,
+      ua.accessory_face,
+      ua.accessory_back,
+      ua.accessory_hand,
+      ua.accessory_chest,
+      ua.aura_emoji,
+      COALESCE(ua.pose, 'idle') AS pose
     FROM public.profiles AS p
     LEFT JOIN public.user_avatar AS ua ON ua.user_id = p.id
     LEFT JOIN task_counts AS tc ON tc.owner_id = p.id
@@ -59,7 +85,20 @@ AS $$
     r.rank_position,
     r.total_users,
     r.face_emoji,
-    r.bg_color
+    r.bg_color,
+    r.accessory_emoji,
+    r.pet_emoji,
+    r.skin_tone,
+    r.hair_color,
+    r.hair_style,
+    r.clothes_color,
+    r.accessory_head,
+    r.accessory_face,
+    r.accessory_back,
+    r.accessory_hand,
+    r.accessory_chest,
+    r.aura_emoji,
+    r.pose
   FROM ranked AS r
   WHERE r.rank_position <= 50
      OR r.id = auth.uid()

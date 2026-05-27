@@ -31,6 +31,19 @@ export type LeaderboardEntry = {
   total_users: number;
   face_emoji: string;
   bg_color: string;
+  accessory_emoji: string | null;
+  pet_emoji: string | null;
+  skin_tone: string | null;
+  hair_color: string | null;
+  hair_style: string | null;
+  clothes_color: string | null;
+  accessory_head: string | null;
+  accessory_face: string | null;
+  accessory_back: string | null;
+  accessory_hand: string | null;
+  accessory_chest: string | null;
+  aura_emoji: string | null;
+  pose: string | null;
 };
 
 export const qk = {
