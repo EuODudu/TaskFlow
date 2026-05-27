@@ -26,6 +26,9 @@ export type LeaderboardEntry = {
   xp: number;
   coins: number;
   streak_days: number;
+  tasks_completed: number;
+  rank_position: number;
+  total_users: number;
   face_emoji: string;
   bg_color: string;
 };
@@ -271,6 +274,8 @@ export const priorityMeta: Record<TaskPriority, { label: string; color: string }
 export function useLeaderboard() {
   return useQuery({
     queryKey: ["leaderboard"],
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("get_leaderboard");
       if (error) throw error;
