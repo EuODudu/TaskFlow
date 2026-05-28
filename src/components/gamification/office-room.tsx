@@ -1,5 +1,12 @@
 import { useState, useCallback } from "react";
-import { DndContext, useDraggable, useDroppable, DragEndEvent, DragOverlay, DragStartEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  useDraggable,
+  useDroppable,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -9,27 +16,23 @@ import { RARITY_STYLES, type ExtendedRarity } from "./rarity-frame";
 import { FurnitureSVG } from "./furniture-sprites";
 import { getOfficeTheme, type OfficeTheme } from "./office-themes";
 import type { AvatarItem } from "@/lib/queries";
+import {
+  CELL_SIZE,
+  GRID_COLS,
+  GRID_ROWS,
+  OFFICE_WALL_ROWS,
+  isFloorCell,
+  getItemSize,
+  getPlacementZone,
+  isSurfaceItem,
+  isWallCell,
+  isWallDecorItem,
+} from "./office-layout";
 
-export const GRID_COLS = 12;
-export const GRID_ROWS = 8;
-export const CELL_SIZE = 64; // px
-/** Linhas da grade reservadas para parede (móveis só abaixo disso). */
-export const OFFICE_WALL_ROWS = 3;
-export const OFFICE_FLOOR_ROWS = GRID_ROWS - OFFICE_WALL_ROWS;
+export { CELL_SIZE, GRID_COLS, GRID_ROWS, OFFICE_WALL_ROWS } from "./office-layout";
+export type { PlacementZone } from "./office-layout";
+
 export const WALL_HEIGHT_PX = OFFICE_WALL_ROWS * CELL_SIZE;
-
-export function isWallCell(y: number) {
-  return y < OFFICE_WALL_ROWS;
-}
-
-export function isFloorCell(x: number, y: number) {
-  return x >= 0 && x < GRID_COLS && y >= OFFICE_WALL_ROWS && y < GRID_ROWS;
-}
-
-export function isWallDecorItem(item: AvatarItem) {
-  return item.slug.startsWith("office_wall_")
-    || ["office_board", "office_whiteboard", "office_chandelier", "office_painting"].includes(item.slug);
-}
 
 export type PlacedItem = {
   id: string;
@@ -51,7 +54,14 @@ type OfficeRoomProps = {
 
 // ─── Draggable placed item ───────────────────────────────────────────────────
 
-function DraggableFurniture({ placed, isEditing, onRemove, onRotate, onSelect, isSelected }: {
+function DraggableFurniture({
+  placed,
+  isEditing,
+  onRemove,
+  onRotate,
+  onSelect,
+  isSelected,
+}: {
   placed: PlacedItem;
   isEditing: boolean;
   onRemove: () => void;
@@ -66,8 +76,9 @@ function DraggableFurniture({ placed, isEditing, onRemove, onRotate, onSelect, i
 
   const rarity = (placed.item.rarity ?? "common") as ExtendedRarity;
   const rs = RARITY_STYLES[rarity];
-  const gw = (placed.item as any).grid_w ?? 1;
-  const gh = (placed.item as any).grid_h ?? 1;
+  const { w: gw, h: gh } = getItemSize(placed.item);
+  const zone = getPlacementZone(placed.item);
+  const spriteScale = zone === "surface" ? 0.9 : zone === "wall" ? 0.94 : 1;
 
   const style = {
     position: "absolute" as const,
@@ -95,22 +106,31 @@ function DraggableFurniture({ placed, isEditing, onRemove, onRotate, onSelect, i
       {...(isEditing ? { ...listeners, ...attributes } : {})}
     >
       <div className="absolute bottom-1 left-1/2 h-4 w-4/5 -translate-x-1/2 rounded-full bg-black/25 blur-md" />
-      <div className="absolute inset-1 rounded-2xl opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ boxShadow: `0 0 24px ${rs.color}33` }} />
-      <FurnitureSVG item={placed.item} size={Math.min(gw, gh) * CELL_SIZE - 8} />
+      <div
+        className="absolute inset-1 rounded-2xl opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        style={{ boxShadow: `0 0 24px ${rs.color}33` }}
+      />
+      <FurnitureSVG item={placed.item} size={Math.min(gw, gh) * CELL_SIZE * spriteScale - 6} />
 
       {/* Edit controls */}
       {isEditing && isSelected && !isDragging && (
         <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex gap-1 z-20">
           <button
             className="size-6 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-lg hover:bg-blue-600"
-            onClick={(e) => { e.stopPropagation(); onRotate(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRotate();
+            }}
             title="Rotacionar"
           >
             <RotateCw className="size-3" />
           </button>
           <button
             className="size-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600"
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
             title="Remover"
           >
             <Trash2 className="size-3" />
@@ -131,22 +151,41 @@ function DraggableFurniture({ placed, isEditing, onRemove, onRotate, onSelect, i
 
 // ─── Drop cell ───────────────────────────────────────────────────────────────
 
-function DropCell({ x, y, isOccupied, isWall }: { x: number; y: number; isOccupied: boolean; isWall: boolean }) {
+function DropCell({
+  x,
+  y,
+  isOccupied,
+  isWall,
+}: {
+  x: number;
+  y: number;
+  isOccupied: boolean;
+  isWall: boolean;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${x}-${y}` });
   return (
     <div
       ref={setNodeRef}
       className={cn(
         "border border-transparent transition-all duration-150 backdrop-blur-[1px]",
-        isWall
-          ? "bg-transparent"
-          : "bg-transparent",
-        isOver && !isOccupied && "scale-[0.98] bg-primary/25 border-primary/60 shadow-[inset_0_0_18px_rgba(255,255,255,0.28)]",
+        isWall ? "bg-transparent" : "bg-transparent",
+        isOver &&
+          !isOccupied &&
+          "scale-[0.98] bg-primary/25 border-primary/60 shadow-[inset_0_0_18px_rgba(255,255,255,0.28)]",
         isOver && isOccupied && "bg-red-500/20 border-red-500/50",
       )}
       style={{ width: CELL_SIZE, height: CELL_SIZE }}
     />
   );
+}
+
+function getRenderLayer(placed: PlacedItem) {
+  const zone = getPlacementZone(placed.item);
+  if (zone === "wall") return 1;
+  if (zone === "rug") return 2;
+  if (zone === "floor") return 3;
+  if (zone === "surface") return 4;
+  return 3;
 }
 
 const PARTICLES = [
@@ -176,7 +215,12 @@ function AmbientParticles({ theme }: { theme: OfficeTheme }) {
             boxShadow: `0 0 14px ${theme.glow}`,
           }}
           animate={{ y: [-2, -12, -2], opacity: [0.2, 0.65, 0.2], scale: [0.75, 1.2, 0.75] }}
-          transition={{ duration: 5 + index * 0.35, repeat: Infinity, delay: particle.delay, ease: "easeInOut" }}
+          transition={{
+            duration: 5 + index * 0.35,
+            repeat: Infinity,
+            delay: particle.delay,
+            ease: "easeInOut",
+          }}
         />
       ))}
     </div>
@@ -201,8 +245,7 @@ export function OfficeRoom({
   const occupiedCells = useCallback((): Set<string> => {
     const cells = new Set<string>();
     for (const p of placedItems) {
-      const gw = (p.item as any).grid_w ?? 1;
-      const gh = (p.item as any).grid_h ?? 1;
+      const { w: gw, h: gh } = getItemSize(p.item);
       for (let dx = 0; dx < gw; dx++) {
         for (let dy = 0; dy < gh; dy++) {
           cells.add(`${p.x + dx}-${p.y + dy}`);
@@ -239,6 +282,11 @@ export function OfficeRoom({
   const occupied = occupiedCells();
   const activePlaced = activeDragId ? placedItems.find((p) => p.id === activeDragId) : null;
   const theme = getOfficeTheme(themeItem?.slug);
+  const layeredPlacedItems = [...placedItems].sort((a, b) => {
+    const layerDiff = getRenderLayer(a) - getRenderLayer(b);
+    if (layerDiff !== 0) return layerDiff;
+    return a.y - b.y;
+  });
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
@@ -259,19 +307,28 @@ export function OfficeRoom({
             Tema: {themeItem?.name ?? theme.name}
           </p>
           <p className="relative mt-1 text-xs text-muted-foreground">
-            {isEditing ? "Arraste móveis no piso e decorações exclusivas na parede." : "Seu escritório personalizado de produtividade."}
+            {isEditing
+              ? "Piso: móveis e tapetes • Parede: decorações • Mesa: itens de superfície."
+              : "Seu escritório personalizado de produtividade."}
           </p>
         </div>
         <Button
           size="sm"
           variant={isEditing ? "default" : "outline"}
-          onClick={() => { setIsEditing(!isEditing); setSelectedId(null); }}
+          onClick={() => {
+            setIsEditing(!isEditing);
+            setSelectedId(null);
+          }}
           className="relative mt-3 gap-2 rounded-2xl border-white/20 shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl sm:mt-0"
         >
           {isEditing ? (
-            <><Check className="size-3.5" /> Concluir</>
+            <>
+              <Check className="size-3.5" /> Concluir
+            </>
           ) : (
-            <><Edit3 className="size-3.5" /> Editar</>
+            <>
+              <Edit3 className="size-3.5" /> Editar
+            </>
           )}
         </Button>
       </div>
@@ -339,7 +396,10 @@ export function OfficeRoom({
         <AmbientParticles theme={theme} />
 
         <DndContext onDragEnd={handleDragEnd} onDragStart={handleDragStart}>
-          <div className="relative z-[3] mx-auto" style={{ width: GRID_COLS * CELL_SIZE, height: GRID_ROWS * CELL_SIZE }}>
+          <div
+            className="relative z-[3] mx-auto"
+            style={{ width: GRID_COLS * CELL_SIZE, height: GRID_ROWS * CELL_SIZE }}
+          >
             {/* Faixa de parede na grade (sem drops) */}
             <div
               className="absolute inset-x-0 top-0 z-[1] pointer-events-none border-b border-black/10"
@@ -377,14 +437,19 @@ export function OfficeRoom({
 
             {/* Placed items */}
             <AnimatePresence>
-              {placedItems.map((placed) => (
+              {layeredPlacedItems.map((placed) => (
                 <motion.div
                   key={placed.id}
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.5, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: getRenderLayer(placed) + 1,
+                    pointerEvents: "none",
+                  }}
                 >
                   <DraggableFurniture
                     placed={placed}
@@ -411,7 +476,9 @@ export function OfficeRoom({
                   <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.24),transparent_50%,rgba(255,255,255,0.08))]" />
                   <div className="relative text-5xl drop-shadow-lg">🏢</div>
                   <p className="mt-2 text-sm font-semibold">Escritório pronto para decorar</p>
-                  <p className="text-xs text-muted-foreground">Coloque móveis no piso e decorações na parede.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Coloque móveis no piso, decorações na parede e itens pequenos sobre a mesa.
+                  </p>
                 </div>
               </div>
             )}
@@ -420,7 +487,10 @@ export function OfficeRoom({
           <DragOverlay>
             {activePlaced && (
               <div className="opacity-80">
-                <FurnitureSVG item={activePlaced.item} size={CELL_SIZE - 8} />
+                <FurnitureSVG
+                  item={activePlaced.item}
+                  size={isSurfaceItem(activePlaced.item) ? CELL_SIZE * 0.9 : CELL_SIZE - 6}
+                />
               </div>
             )}
           </DragOverlay>
@@ -452,7 +522,11 @@ type InventoryPlacerProps = {
   onPickItem: (item: AvatarItem) => void;
 };
 
-export function InventoryPlacer({ ownedOfficeItems, placedItemIds, onPickItem }: InventoryPlacerProps) {
+export function InventoryPlacer({
+  ownedOfficeItems,
+  placedItemIds,
+  onPickItem,
+}: InventoryPlacerProps) {
   if (ownedOfficeItems.length === 0) {
     return (
       <div className="rounded-2xl border border-white/15 bg-muted/30 py-8 text-center text-sm text-muted-foreground shadow-inner">
@@ -477,7 +551,8 @@ export function InventoryPlacer({ ownedOfficeItems, placedItemIds, onPickItem }:
             disabled={isPlaced}
             className={cn(
               "relative flex flex-col items-center gap-1 overflow-hidden rounded-2xl border p-2.5 text-center text-xs shadow-lg backdrop-blur transition-all hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0 disabled:hover:scale-100",
-              rs.border, rs.bg,
+              rs.border,
+              rs.bg,
             )}
           >
             <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.24),transparent_45%,rgba(255,255,255,0.08))]" />
@@ -485,6 +560,15 @@ export function InventoryPlacer({ ownedOfficeItems, placedItemIds, onPickItem }:
               <FurnitureSVG item={item} size={42} />
             </span>
             <span className="relative font-medium leading-tight text-[11px]">{item.name}</span>
+            <span className="relative rounded-full bg-background/60 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+              {getPlacementZone(item) === "wall"
+                ? "parede"
+                : getPlacementZone(item) === "surface"
+                  ? "mesa"
+                  : getPlacementZone(item) === "rug"
+                    ? "tapete"
+                    : "piso"}
+            </span>
             {isPlaced && (
               <span className="absolute right-1.5 top-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground shadow-lg">
                 colocado

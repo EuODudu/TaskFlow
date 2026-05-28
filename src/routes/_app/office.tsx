@@ -15,20 +15,53 @@ import {
   OfficeRoom,
   InventoryPlacer,
   type PlacedItem,
+} from "@/components/gamification/office-room";
+import {
   GRID_COLS,
   GRID_ROWS,
   OFFICE_WALL_ROWS,
+  getItemSize,
+  getPlacementZone,
   isFloorCell,
+  isFloorPlacedItem,
+  isRugItem,
+  isSurfaceHost,
+  isSurfaceItem,
   isWallCell,
   isWallDecorItem,
-} from "@/components/gamification/office-room";
+  type PlacementZone,
+} from "@/components/gamification/office-layout";
 import { Avatar2D } from "@/components/gamification/avatar-2d";
 import { LevelBadge } from "@/components/gamification/level-badge";
-import type { AvatarItem } from "@/lib/queries";
+import type { AvatarItem, UserAvatar } from "@/lib/queries";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 export const Route = createFileRoute("/_app/office")({ component: OfficePage });
 
 function OfficePage() {
+  type OfficeItemsTable = {
+    insert(values: {
+      user_id: string;
+      item_id: string;
+      grid_x: number;
+      grid_y: number;
+      rotation: number;
+    }): Promise<{ error: PostgrestError | null }>;
+    delete(): {
+      eq(column: "id", value: string): Promise<{ error: PostgrestError | null }>;
+    };
+    update(values: { rotation?: number; grid_x?: number; grid_y?: number }): {
+      eq(column: "id", value: string): Promise<{ error: PostgrestError | null }>;
+    };
+  };
+
+  const officeItemsTable = () =>
+    (
+      supabase as unknown as {
+        from(table: "office_items"): OfficeItemsTable;
+      }
+    ).from("office_items");
+
   const { user } = useAuth();
   const { data: profile } = useProfile(user?.id);
   const { data: avatar } = useUserAvatar(user?.id);
@@ -54,45 +87,80 @@ function OfficePage() {
       rotation: r.rotation,
     }));
 
-  const getItemSize = (item: AvatarItem) => ({
-    w: Math.max(1, (item as any).grid_w ?? 1),
-    h: Math.max(1, (item as any).grid_h ?? 1),
-  });
+  const getSupportSurfaceHostId = useCallback(
+    (item: AvatarItem, x: number, y: number, exceptId?: string) => {
+      if (!isSurfaceItem(item)) return null;
+      const { w, h } = getItemSize(item);
+      for (const p of placedItems) {
+        if (p.id === exceptId) continue;
+        if (!isFloorPlacedItem(p.item) || isRugItem(p.item) || !isSurfaceHost(p.item)) continue;
+        const { w: gw, h: gh } = getItemSize(p.item);
+        const containsX = x >= p.x && x + w <= p.x + gw;
+        const containsY = y >= p.y && y + h <= p.y + gh;
+        if (containsX && containsY) return p.id;
+      }
+      return null;
+    },
+    [placedItems],
+  );
 
-  const isOccupied = useCallback((x: number, y: number, exceptId?: string): boolean => {
-    for (const p of placedItems) {
-      if (p.id === exceptId) continue;
-      const gw = (p.item as any).grid_w ?? 1;
-      const gh = (p.item as any).grid_h ?? 1;
-      for (let dx = 0; dx < gw; dx++) {
-        for (let dy = 0; dy < gh; dy++) {
-          if (p.x + dx === x && p.y + dy === y) return true;
+  const isCellBlockedByZone = useCallback(
+    (zone: PlacementZone, x: number, y: number, exceptId?: string) => {
+      for (const p of placedItems) {
+        if (p.id === exceptId) continue;
+        const otherZone = getPlacementZone(p.item);
+        const { w: gw, h: gh } = getItemSize(p.item);
+        const coversCell = x >= p.x && x < p.x + gw && y >= p.y && y < p.y + gh;
+        if (!coversCell) continue;
+
+        if (zone === "surface") {
+          if (otherZone === "surface") return true;
+          continue;
+        }
+        if (zone === "rug") {
+          if (otherZone === "rug" || otherZone === "wall") return true;
+          continue;
+        }
+        if (zone === "floor") {
+          if (otherZone === "floor" || otherZone === "wall") return true;
+          continue;
+        }
+        if (zone === "wall") {
+          if (otherZone === "wall") return true;
         }
       }
-    }
-    return false;
-  }, [placedItems]);
-
-  const canPlaceAt = useCallback((item: AvatarItem, x: number, y: number, exceptId?: string): boolean => {
-    const { w, h } = getItemSize(item);
-    const wallDecor = isWallDecorItem(item);
-    if (x < 0 || x + w > GRID_COLS) return false;
-    if (wallDecor) {
-      if (y < 0 || y + h > OFFICE_WALL_ROWS) return false;
-    } else if (y < OFFICE_WALL_ROWS || y + h > GRID_ROWS) {
       return false;
-    }
+    },
+    [placedItems],
+  );
 
-    for (let dx = 0; dx < w; dx++) {
-      for (let dy = 0; dy < h; dy++) {
-        const cx = x + dx;
-        const cy = y + dy;
-        const validCell = wallDecor ? isWallCell(cy) : isFloorCell(cx, cy);
-        if (!validCell || isOccupied(cx, cy, exceptId)) return false;
+  const canPlaceAt = useCallback(
+    (item: AvatarItem, x: number, y: number, exceptId?: string): boolean => {
+      const { w, h } = getItemSize(item);
+      const zone = getPlacementZone(item);
+      const wallDecor = zone === "wall";
+      if (x < 0 || x + w > GRID_COLS) return false;
+      if (wallDecor) {
+        if (y < 0 || y + h > OFFICE_WALL_ROWS) return false;
+      } else if (y < OFFICE_WALL_ROWS || y + h > GRID_ROWS) {
+        return false;
       }
-    }
-    return true;
-  }, [isOccupied]);
+
+      for (let dx = 0; dx < w; dx++) {
+        for (let dy = 0; dy < h; dy++) {
+          const cx = x + dx;
+          const cy = y + dy;
+          const validCell = wallDecor ? isWallCell(cy) : isFloorCell(cx, cy);
+          if (!validCell || isCellBlockedByZone(zone, cx, cy, exceptId)) return false;
+        }
+      }
+
+      if (zone === "surface" && !getSupportSurfaceHostId(item, x, y, exceptId)) return false;
+
+      return true;
+    },
+    [getSupportSurfaceHostId, isCellBlockedByZone],
+  );
 
   const handlePlaceItem = async (item: AvatarItem) => {
     if (!user) return;
@@ -106,7 +174,7 @@ function OfficePage() {
       for (let x = 0; x <= GRID_COLS - w && !placed; x++) {
         if (canPlaceAt(item, x, y)) {
           setSaving(true);
-          const { error } = await (supabase as any).from("office_items").insert({
+          const { error } = await officeItemsTable().insert({
             user_id: user.id,
             item_id: item.id,
             grid_x: x,
@@ -115,8 +183,9 @@ function OfficePage() {
           });
           setSaving(false);
           if (error) {
-            toast.error((error as any).message, {
-              description: "Execute a migration/seed do escritório para habilitar a personalização.",
+            toast.error(error.message, {
+              description:
+                "Execute a migration/seed do escritório para habilitar a personalização.",
             });
           } else {
             inv.officeItems(user!.id);
@@ -131,8 +200,8 @@ function OfficePage() {
 
   const handleRemoveItem = async (placedId: string) => {
     if (!user) return;
-    const { error } = await (supabase as any).from("office_items").delete().eq("id", placedId);
-    if (error) return toast.error((error as any).message);
+    const { error } = await officeItemsTable().delete().eq("id", placedId);
+    if (error) return toast.error(error.message);
     inv.officeItems(user!.id);
     toast.success("Item removido");
   };
@@ -141,8 +210,8 @@ function OfficePage() {
     const current = placedItems.find((p) => p.id === placedId);
     if (!current) return;
     const newRot = (current.rotation + 90) % 360;
-    const { error } = await (supabase as any).from("office_items").update({ rotation: newRot }).eq("id", placedId);
-    if (error) return toast.error((error as any).message);
+    const { error } = await officeItemsTable().update({ rotation: newRot }).eq("id", placedId);
+    if (error) return toast.error(error.message);
     inv.officeItems(user!.id);
   };
 
@@ -152,11 +221,16 @@ function OfficePage() {
     const wallDecor = isWallDecorItem(current.item);
     const validZone = wallDecor ? isWallCell(y) : isFloorCell(x, y);
     if (!validZone || !canPlaceAt(current.item, x, y, placedId)) {
-      toast.error(wallDecor ? "Esse item só pode ficar na parede!" : "Móveis só podem ficar no piso!");
+      const zone = getPlacementZone(current.item);
+      if (zone === "surface") toast.error("Esse item precisa ficar sobre uma mesa ou bancada.");
+      else
+        toast.error(
+          wallDecor ? "Esse item só pode ficar na parede!" : "Móveis só podem ficar no piso!",
+        );
       return;
     }
-    const { error } = await (supabase as any).from("office_items").update({ grid_x: x, grid_y: y }).eq("id", placedId);
-    if (error) return toast.error((error as any).message);
+    const { error } = await officeItemsTable().update({ grid_x: x, grid_y: y }).eq("id", placedId);
+    if (error) return toast.error(error.message);
     inv.officeItems(user!.id);
   };
 
@@ -178,7 +252,7 @@ function OfficePage() {
           </p>
         </div>
         <div className="relative flex items-center gap-3 rounded-2xl border border-white/10 bg-background/45 px-3 py-2 shadow-inner backdrop-blur">
-          {avatar && <Avatar2D avatar={avatar as any} size="sm" />}
+          {avatar && <Avatar2D avatar={avatar as UserAvatar} size="sm" />}
           <LevelBadge xp={xp} size="sm" showTitle />
         </div>
       </div>
@@ -204,7 +278,9 @@ function OfficePage() {
               onClick={() => setSidebarTab("inventory")}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium transition-all",
-                sidebarTab === "inventory" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/70",
+                sidebarTab === "inventory"
+                  ? "bg-primary text-primary-foreground shadow-lg"
+                  : "text-muted-foreground hover:bg-muted/70",
               )}
             >
               <Package className="size-3.5" /> Inventário
@@ -213,7 +289,9 @@ function OfficePage() {
               onClick={() => setSidebarTab("info")}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium transition-all",
-                sidebarTab === "info" ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-muted/70",
+                sidebarTab === "info"
+                  ? "bg-primary text-primary-foreground shadow-lg"
+                  : "text-muted-foreground hover:bg-muted/70",
               )}
             >
               <Home className="size-3.5" /> Info
@@ -232,7 +310,10 @@ function OfficePage() {
               />
               {ownedOfficeItems.length === 0 && (
                 <div className="text-center pt-2">
-                  <a href="/store" className="text-xs text-primary flex items-center justify-center gap-1 hover:underline">
+                  <a
+                    href="/store"
+                    className="text-xs text-primary flex items-center justify-center gap-1 hover:underline"
+                  >
                     <ShoppingBag className="size-3" /> Ir para a Loja
                     <ChevronRight className="size-3" />
                   </a>
@@ -246,7 +327,9 @@ function OfficePage() {
               <div>
                 <p className="text-xs font-semibold mb-2">Visual ativo</p>
                 <div className="mb-4 rounded-2xl border border-white/15 bg-background/45 p-3 shadow-inner">
-                  <p className="text-sm font-semibold">{activeTheme?.name ?? "Clássico Produtivo"}</p>
+                  <p className="text-sm font-semibold">
+                    {activeTheme?.name ?? "Clássico Produtivo"}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Compre e equipe novos visuais na Loja.
                   </p>
@@ -267,8 +350,11 @@ function OfficePage() {
 
               <div className="space-y-2 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">Dicas</p>
-                <p>• Clique <strong>Editar</strong> para mover móveis</p>
+                <p>
+                  • Clique <strong>Editar</strong> para mover móveis
+                </p>
                 <p>• Selecione um item para rotacionar ou remover</p>
+                <p>• Itens de mesa só podem ser colocados sobre mesas/bancadas</p>
                 <p>• Compre mais itens na Loja</p>
                 <p>• Desbloqueie móveis raros subindo de nível</p>
               </div>
