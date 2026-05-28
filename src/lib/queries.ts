@@ -447,6 +447,38 @@ export function useOwnedOfficeItems(userId: string | undefined) {
   });
 }
 
+export function useOwnedOfficeThemes(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["owned-office-themes", userId ?? ""],
+    enabled: !!userId,
+    queryFn: async () => {
+      const [inventoryRes, defaultsRes] = await Promise.all([
+        supabase
+          .from("user_inventory")
+          .select("item:avatar_items(*)")
+          .eq("user_id", userId!),
+        supabase
+          .from("avatar_items")
+          .select("*")
+          .eq("category", "office_theme")
+          .eq("is_default", true),
+      ]);
+      if (inventoryRes.error) throw inventoryRes.error;
+      if (defaultsRes.error) throw defaultsRes.error;
+
+      const map = new Map<string, AvatarItem>();
+      for (const item of defaultsRes.data ?? []) {
+        map.set(item.id, item as AvatarItem);
+      }
+      for (const row of inventoryRes.data ?? []) {
+        const item = (row as { item: AvatarItem | null }).item;
+        if (item?.category === "office_theme") map.set(item.id, item);
+      }
+      return Array.from(map.values());
+    },
+  });
+}
+
 // ─── Badge logic ──────────────────────────────────────────────────────────────
 
 export async function checkAndAwardBadges(

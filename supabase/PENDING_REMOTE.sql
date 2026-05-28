@@ -576,7 +576,13 @@ WHERE slug IN (
 );
 
 -- =========================================================
--- 10. Mesa Mental (notas gamificadas)
+-- 10. Escritório Dream Setup (sala maior, estilos, novos itens)
+-- =========================================================
+-- Arquivo: supabase/migrations/20260528150000_office_dream_setup_builder.sql
+-- Execute o conteúdo completo dessa migration em produção.
+
+-- =========================================================
+-- 11. Mesa Mental (notas gamificadas)
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS public.mental_notes (
@@ -625,7 +631,7 @@ CREATE TRIGGER mental_notes_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.mental_notes_set_updated_at();
 
 -- =========================================================
--- 11. Notificações de conquistas: tipos legados + triggers XP
+-- 12. Notificações de conquistas: tipos legados + triggers XP
 -- IMPORTANTE: rode este bloco INTEIRO (do UPDATE até o último CREATE TRIGGER).
 -- Não execute só a linha "AFTER UPDATE..." isolada — isso gera erro de sintaxe.
 -- Pré-requisito: seção 5 (award_task_xp) já executada neste arquivo.

@@ -434,6 +434,160 @@ export const FURNITURE_SPRITES: Record<string, (color: string) => React.ReactNod
       <circle cx="42" cy="36" r="2" fill="#f8fafc" opacity="0.8" />
     </g>
   ),
+  office_chair_gamer: (c) => (
+    <g>
+      <ellipse cx="32" cy="54" rx="14" ry="4" fill="#00000022" />
+      <path d="M 20 48 L 24 28 Q 32 22 40 28 L 44 48 Z" fill={c} />
+      <rect x="18" y="46" width="28" height="6" rx="3" fill="#1e1b4b" />
+      <rect x="28" y="18" width="8" height="14" rx="3" fill={c} opacity="0.85" />
+      <circle cx="22" cy="40" r="3" fill="#22d3ee" opacity="0.9" />
+      <circle cx="42" cy="40" r="3" fill="#a855f7" opacity="0.9" />
+    </g>
+  ),
+  office_bed_loft: (c) => (
+    <g>
+      <rect x="8" y="36" width="48" height="14" rx="4" fill="#4b2e1a" />
+      <rect x="10" y="22" width="44" height="18" rx="4" fill={c} opacity="0.9" />
+      <rect x="12" y="24" width="40" height="10" rx="3" fill="#f8fafc" opacity="0.5" />
+      <rect x="8" y="14" width="6" height="36" rx="2" fill="#374151" />
+      <rect x="50" y="14" width="6" height="36" rx="2" fill="#374151" />
+    </g>
+  ),
+  office_bookshelf_tall: (c) => (
+    <g>
+      <rect x="20" y="8" width="24" height="50" rx="3" fill={c} />
+      <line x1="22" y1="22" x2="42" y2="22" stroke="#78350f" strokeWidth="1.5" />
+      <line x1="22" y1="36" x2="42" y2="36" stroke="#78350f" strokeWidth="1.5" />
+      <rect x="23" y="12" width="6" height="8" rx="1" fill="#dc2626" opacity="0.8" />
+      <rect x="31" y="26" width="8" height="6" rx="1" fill="#2563eb" opacity="0.8" />
+      <rect x="24" y="40" width="7" height="8" rx="1" fill="#16a34a" opacity="0.8" />
+    </g>
+  ),
+  office_rgb_strip: (c) => (
+    <g>
+      <rect x="6" y="28" width="52" height="8" rx="4" fill="#0f172a" />
+      <rect x="8" y="30" width="48" height="4" rx="2" fill={c} opacity="0.95" />
+      <circle cx="14" cy="32" r="2" fill="#22d3ee" />
+      <circle cx="26" cy="32" r="2" fill="#a855f7" />
+      <circle cx="38" cy="32" r="2" fill="#f472b6" />
+      <circle cx="50" cy="32" r="2" fill="#4ade80" />
+    </g>
+  ),
+  office_floor_lamp: (c) => (
+    <g>
+      <ellipse cx="32" cy="56" rx="10" ry="3" fill="#00000020" />
+      <line x1="32" y1="56" x2="32" y2="24" stroke="#64748b" strokeWidth="3" />
+      <path d="M 18 24 Q 32 8 46 24 Z" fill={c} opacity="0.85" />
+      <ellipse cx="32" cy="24" rx="16" ry="5" fill="#fef3c7" opacity="0.35" />
+    </g>
+  ),
+  office_wall_sconce: (c) => (
+    <g>
+      <rect x="24" y="20" width="16" height="24" rx="4" fill="#e2e8f0" />
+      <circle cx="32" cy="28" r="8" fill={c} opacity="0.9" />
+      <ellipse cx="32" cy="28" rx="12" ry="8" fill="#fef9c3" opacity="0.25" />
+    </g>
+  ),
+  office_flooring_wood: (c) => (
+    <g>
+      <rect x="4" y="20" width="56" height="28" rx="4" fill={c} opacity="0.85" />
+      <line x1="4" y1="28" x2="60" y2="28" stroke="#78350f" strokeWidth="1" opacity="0.5" />
+      <line x1="4" y1="36" x2="60" y2="36" stroke="#78350f" strokeWidth="1" opacity="0.5" />
+      <line x1="20" y1="20" x2="20" y2="48" stroke="#78350f" strokeWidth="1" opacity="0.35" />
+      <line x1="44" y1="20" x2="44" y2="48" stroke="#78350f" strokeWidth="1" opacity="0.35" />
+    </g>
+  ),
+  office_flooring_marble: (c) => (
+    <g>
+      <rect x="4" y="20" width="56" height="28" rx="4" fill={c} opacity="0.9" />
+      <path
+        d="M 8 24 Q 20 32 32 24 Q 44 16 56 28"
+        stroke="#cbd5e1"
+        strokeWidth="1.5"
+        fill="none"
+        opacity="0.6"
+      />
+    </g>
+  ),
+  office_flooring_carpet: (c) => (
+    <g>
+      <rect x="4" y="22" width="56" height="24" rx="6" fill={c} opacity="0.88" />
+      <rect x="8" y="26" width="48" height="16" rx="4" fill="#ffffff18" />
+    </g>
+  ),
+  office_wallpaper_brick: (c) => (
+    <g>
+      <rect x="4" y="16" width="56" height="32" rx="2" fill={c} opacity="0.9" />
+      {[0, 1, 2].map((row) =>
+        [0, 1, 2, 3].map((col) => (
+          <rect
+            key={`${row}-${col}`}
+            x={6 + col * 14 + (row % 2) * 7}
+            y={18 + row * 10}
+            width="12"
+            height="8"
+            rx="1"
+            fill="#7f1d1d"
+            opacity="0.35"
+          />
+        )),
+      )}
+    </g>
+  ),
+  office_wallpaper_neon: (c) => (
+    <g>
+      <rect x="4" y="16" width="56" height="32" rx="2" fill="#0f172a" />
+      <line x1="8" y1="20" x2="56" y2="20" stroke={c} strokeWidth="1" opacity="0.7" />
+      <line x1="8" y1="32" x2="56" y2="32" stroke={c} strokeWidth="1" opacity="0.7" />
+      <line x1="8" y1="44" x2="56" y2="44" stroke={c} strokeWidth="1" opacity="0.7" />
+      <line x1="20" y1="16" x2="20" y2="48" stroke={c} strokeWidth="1" opacity="0.5" />
+      <line x1="44" y1="16" x2="44" y2="48" stroke={c} strokeWidth="1" opacity="0.5" />
+    </g>
+  ),
+  office_wallpaper_plants: (c) => (
+    <g>
+      <rect x="4" y="16" width="56" height="32" rx="2" fill="#14532d" opacity="0.85" />
+      <circle cx="16" cy="28" r="8" fill={c} opacity="0.8" />
+      <circle cx="48" cy="26" r="10" fill="#22c55e" opacity="0.75" />
+      <circle cx="32" cy="38" r="7" fill="#86efac" opacity="0.8" />
+    </g>
+  ),
+  office_tech_speaker: (c) => (
+    <g>
+      <rect x="18" y="18" width="28" height="32" rx="6" fill="#1f2937" />
+      <circle cx="32" cy="30" r="8" fill={c} opacity="0.85" />
+      <circle cx="32" cy="30" r="4" fill="#0f172a" />
+      <rect x="22" y="42" width="20" height="4" rx="2" fill="#475569" />
+    </g>
+  ),
+  office_gamer_headset: (c) => (
+    <g>
+      <path
+        d="M 14 32 Q 32 14 50 32"
+        stroke={c}
+        strokeWidth="5"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <rect x="10" y="30" width="12" height="16" rx="5" fill={c} opacity="0.9" />
+      <rect x="42" y="30" width="12" height="16" rx="5" fill={c} opacity="0.9" />
+      <rect x="28" y="38" width="8" height="6" rx="2" fill="#1e1b4b" />
+    </g>
+  ),
+  office_cozy_blanket: (c) => (
+    <g>
+      <rect x="10" y="30" width="44" height="18" rx="6" fill={c} opacity="0.88" />
+      <path d="M 12 34 Q 32 42 52 34" stroke="#ffffff44" strokeWidth="2" fill="none" />
+    </g>
+  ),
+  office_nature_bonsai: (c) => (
+    <g>
+      <ellipse cx="32" cy="52" rx="12" ry="4" fill="#78350f" />
+      <rect x="26" y="40" width="12" height="12" rx="2" fill="#92400e" />
+      <ellipse cx="32" cy="32" rx="14" ry="12" fill={c} />
+      <ellipse cx="28" cy="28" rx="6" ry="5" fill="#86efac" opacity="0.8" />
+    </g>
+  ),
 };
 
 function getFurnitureColor(item: AvatarItem, rarity: ExtendedRarity) {
