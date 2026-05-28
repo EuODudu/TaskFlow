@@ -151,8 +151,23 @@ export function RoomCanvas({
         className="absolute inset-x-0 top-0 z-0 pointer-events-none"
         style={{
           height: WALL_HEIGHT_PX,
-          background: theme.wall,
+          background: `
+            radial-gradient(circle at 18% 18%, #ffffff42, transparent 22%),
+            radial-gradient(circle at 82% 16%, ${theme.glow}24, transparent 24%),
+            linear-gradient(90deg, ${theme.shadow}18, transparent 18%, transparent 82%, ${theme.shadow}16),
+            ${theme.wall}
+          `,
           boxShadow: `inset 0 -34px 46px ${theme.shadow}20, inset 0 1px 0 #ffffff30`,
+        }}
+      />
+      <div
+        className="absolute inset-x-10 z-[1] pointer-events-none"
+        style={{
+          top: 20,
+          height: WALL_HEIGHT_PX - 42,
+          borderRadius: 36,
+          background: `linear-gradient(180deg, #ffffff1f, transparent 45%, ${theme.shadow}10)`,
+          boxShadow: `inset 0 1px 0 #ffffff30, inset 0 -1px 0 ${theme.shadow}18`,
         }}
       />
       <div
@@ -177,9 +192,9 @@ export function RoomCanvas({
         className="absolute inset-x-0 z-[1] pointer-events-none"
         style={{
           top: WALL_HEIGHT_PX - 5,
-          height: 10,
-          background: `linear-gradient(90deg, ${theme.trim}, ${theme.glow}, ${theme.trim})`,
-          boxShadow: `0 12px 28px ${theme.shadow}35, 0 0 24px ${theme.glow}28`,
+          height: 14,
+          background: `linear-gradient(180deg, #ffffff44, transparent 35%), linear-gradient(90deg, ${theme.trim}, ${theme.glow}, ${theme.trim})`,
+          boxShadow: `0 14px 32px ${theme.shadow}40, 0 0 24px ${theme.glow}28`,
         }}
       />
       <div
@@ -188,10 +203,18 @@ export function RoomCanvas({
           top: WALL_HEIGHT_PX,
           background: `
               radial-gradient(ellipse at 50% 10%, ${theme.glow}24, transparent 46%),
-              linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 19%, rgba(0,0,0,0.25) 100%),
-              linear-gradient(135deg, rgba(255,255,255,0.12) 0 8%, transparent 8% 16%, rgba(0,0,0,0.08) 16% 24%, transparent 24% 32%, rgba(255,255,255,0.08) 32% 40%, transparent 40% 100%),
+              linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 22%, rgba(0,0,0,0.25) 100%),
+              linear-gradient(135deg, rgba(255,255,255,0.14) 0 7%, transparent 7% 15%, rgba(0,0,0,0.075) 15% 23%, transparent 23% 31%, rgba(255,255,255,0.08) 31% 39%, transparent 39% 100%),
               ${theme.floor}
             `,
+        }}
+      />
+      <div
+        className="absolute inset-x-0 z-[1] pointer-events-none"
+        style={{
+          top: WALL_HEIGHT_PX + 2,
+          height: 96,
+          background: `linear-gradient(180deg, ${theme.shadow}16, transparent 68%)`,
         }}
       />
       <div

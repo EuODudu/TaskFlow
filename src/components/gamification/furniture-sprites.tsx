@@ -99,6 +99,53 @@ function screenGlow(color: string, x = 10, y = 13, w = 44, h = 21) {
   );
 }
 
+function wallMount(width = 52, height = 36, x = 6, y = 10, fill = "#f8fafc") {
+  return (
+    <g>
+      <path
+        d={`M ${x + 3} ${y + height + 3} H ${x + width - 2} Q ${x + width + 1} ${y + height + 3} ${x + width + 3} ${y + height + 6} H ${x + 7} Q ${x + 4} ${y + height + 6} ${x + 3} ${y + height + 3} Z`}
+        fill="#020617"
+        opacity="0.14"
+      />
+      <rect x={x} y={y} width={width} height={height} rx="7" fill="#ffffff" opacity="0.92" />
+      <rect x={x + 2} y={y + 2} width={width - 4} height={height - 4} rx="5" fill={fill} />
+      <path
+        d={`M ${x + 6} ${y + 7} H ${x + width - 12}`}
+        stroke="#ffffff"
+        strokeWidth="2"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+    </g>
+  );
+}
+
+function windowScenery(color: string) {
+  return (
+    <g>
+      <defs>
+        <linearGradient id="office-window-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#bae6fd" />
+          <stop offset="60%" stopColor={color} stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#dbeafe" />
+        </linearGradient>
+      </defs>
+      <rect x="11" y="13" width="42" height="29" rx="5" fill="url(#office-window-sky)" />
+      <circle cx="43" cy="20" r="5" fill="#fde68a" opacity="0.9" />
+      <path d="M 11 35 Q 20 25 29 32 Q 39 20 53 28 V 42 H 11 Z" fill="#eff6ff" opacity="0.75" />
+      <path d="M 11 39 Q 22 31 31 36 Q 42 29 53 34 V 42 H 11 Z" fill="#bfdbfe" opacity="0.65" />
+      <path d="M 31 13 V 42 M 11 28 H 53" stroke="#ffffff" strokeWidth="2" opacity="0.85" />
+      <path
+        d="M 13 16 H 25"
+        stroke="#ffffff"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.82"
+      />
+    </g>
+  );
+}
+
 export const FURNITURE_SPRITES: Record<string, Sprite> = {
   office_desk: (c) => (
     <g>
@@ -156,27 +203,26 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_board: (c) => (
     <g>
-      <path d="M 6 10 H 58 V 45 H 6 Z" fill="#e2e8f0" />
-      <path d="M 9 13 H 55 V 41 H 9 Z" fill={c} opacity="0.88" />
-      <rect x="13" y="18" width="10" height="8" rx="2" fill="#3b82f6" opacity="0.75" />
-      <rect x="26" y="18" width="10" height="8" rx="2" fill="#f97316" opacity="0.75" />
-      <rect x="39" y="18" width="10" height="8" rx="2" fill="#22c55e" opacity="0.75" />
+      {wallMount(52, 36, 6, 9, "#f8fafc")}
+      <rect x="12" y="16" width="40" height="23" rx="4" fill={c} opacity="0.1" />
+      <rect x="14" y="18" width="10" height="8" rx="2" fill="#3b82f6" opacity="0.82" />
+      <rect x="27" y="18" width="10" height="8" rx="2" fill="#f97316" opacity="0.82" />
+      <rect x="40" y="18" width="8" height="8" rx="2" fill="#22c55e" opacity="0.82" />
       <path
-        d="M 14 32 H 50 M 14 36 H 42"
-        stroke="#f8fafc"
+        d="M 15 32 H 49 M 15 36 H 42"
+        stroke={softInk}
         strokeWidth="2"
         strokeLinecap="round"
-        opacity="0.72"
+        opacity="0.34"
       />
-      <rect x="25" y="45" width="14" height="6" rx="2" fill={metal} />
+      <rect x="25" y="45" width="14" height="5" rx="2.5" fill={metal} opacity="0.75" />
     </g>
   ),
   office_whiteboard: (c) => (
     <g>
-      <rect x="5" y="8" width="54" height="39" rx="5" fill="#cbd5e1" />
-      <rect x="8" y="11" width="48" height="33" rx="4" fill="#f8fafc" />
+      {wallMount(52, 38, 6, 8, "#f8fafc")}
       <path
-        d="M 13 34 Q 24 19 34 27 Q 43 35 52 16"
+        d="M 13 34 Q 24 19 34 27 Q 43 35 52 17"
         stroke={c}
         strokeWidth="3"
         fill="none"
@@ -311,37 +357,50 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_painting: (c) => (
     <g>
-      <rect x="6" y="6" width="52" height="39" rx="4" fill={darkWood} />
-      <rect x="9" y="9" width="46" height="33" rx="3" fill={cream} />
-      <path d="M 10 36 Q 18 22 28 29 Q 38 36 46 18 L 55 25 V 42 H 10 Z" fill={c} opacity="0.58" />
-      <circle cx="22" cy="18" r="6" fill="#fef08a" opacity="0.7" />
-      <rect x="28" y="45" width="8" height="7" rx="2" fill={darkWood} />
+      {wallMount(50, 34, 7, 8, cream)}
+      <path d="M 12 36 Q 20 22 29 29 Q 39 36 48 18 L 54 25 V 40 H 12 Z" fill={c} opacity="0.6" />
+      <path d="M 12 40 Q 24 31 35 37 Q 45 29 54 35 V 40 H 12 Z" fill="#0f172a" opacity="0.12" />
+      <circle cx="22" cy="18" r="5.5" fill="#fef08a" opacity="0.78" />
+      <rect x="28" y="44" width="8" height="6" rx="2" fill={darkWood} opacity="0.75" />
     </g>
   ),
   office_wall_window: (c) => (
     <g>
-      <rect x="5" y="10" width="54" height="38" rx="8" fill="#dbeafe" />
-      <rect x="9" y="14" width="46" height="30" rx="6" fill={c} opacity="0.26" />
-      <path d="M 9 39 Q 20 26 31 34 Q 42 18 56 25 V 45 H 9 Z" fill={light} opacity="0.34" />
-      <path d="M 32 14 V 44 M 9 30 H 55" stroke="#1d4ed8" strokeWidth="2" opacity="0.35" />
+      <path d="M 8 12 H 56 L 59 46 H 5 Z" fill="#0f172a" opacity="0.14" />
+      <rect x="5" y="8" width="54" height="40" rx="10" fill="#e0f2fe" />
+      <rect x="8" y="11" width="48" height="34" rx="8" fill="#f8fafc" />
+      {windowScenery(c)}
       <rect
-        x="5"
-        y="10"
-        width="54"
-        height="38"
+        x="8"
+        y="11"
+        width="48"
+        height="34"
         rx="8"
         fill="none"
-        stroke="#1e40af"
+        stroke="#ffffff"
         strokeWidth="2"
-        opacity="0.55"
+        opacity="0.9"
       />
-      {softGloss("M 13 17 H 25", 0.7)}
+      <rect
+        x="5"
+        y="8"
+        width="54"
+        height="40"
+        rx="10"
+        fill="none"
+        stroke="#2563eb"
+        strokeWidth="2"
+        opacity="0.3"
+      />
+      <path d="M 14 49 H 50 L 46 53 H 18 Z" fill={metal} opacity="0.35" />
     </g>
   ),
   office_wall_clock: (c) => (
     <g>
-      <circle cx="32" cy="30" r="23" fill={light} opacity="0.92" />
+      <circle cx="34" cy="33" r="22" fill="#020617" opacity="0.12" />
+      <circle cx="32" cy="30" r="23" fill="#ffffff" opacity="0.96" />
       <circle cx="32" cy="30" r="19" fill={cream} stroke={c} strokeWidth="3" />
+      <circle cx="32" cy="30" r="15" fill="#ffffff" opacity="0.35" />
       <circle cx="32" cy="30" r="3" fill={c} />
       <path
         d="M 32 17 V 29 L 43 29"
@@ -361,35 +420,49 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_wall_art_triptych: (c) => (
     <g>
-      <rect x="5" y="14" width="16" height="30" rx="4" fill="#111827" />
-      <rect x="24" y="9" width="16" height="40" rx="4" fill="#111827" />
-      <rect x="43" y="14" width="16" height="30" rx="4" fill="#111827" />
-      <path d="M 8 38 Q 16 21 21 31 V 44 H 8 Z" fill={c} opacity="0.72" />
-      <path d="M 27 42 Q 34 14 40 28 V 49 H 27 Z" fill={c} opacity="0.82" />
-      <path d="M 46 35 Q 51 22 58 27 V 44 H 46 Z" fill={c} opacity="0.72" />
+      <path d="M 8 47 H 58 Q 55 51 13 51 Q 9 50 8 47 Z" fill="#020617" opacity="0.14" />
+      <rect x="5" y="14" width="16" height="30" rx="5" fill="#f8fafc" />
+      <rect x="24" y="9" width="16" height="40" rx="5" fill="#f8fafc" />
+      <rect x="43" y="14" width="16" height="30" rx="5" fill="#f8fafc" />
+      <rect x="8" y="17" width="10" height="24" rx="3" fill="#111827" />
+      <rect x="27" y="12" width="10" height="34" rx="3" fill="#111827" />
+      <rect x="46" y="17" width="10" height="24" rx="3" fill="#111827" />
+      <path d="M 8 38 Q 15 23 18 31 V 41 H 8 Z" fill={c} opacity="0.75" />
+      <path d="M 27 42 Q 33 16 37 28 V 46 H 27 Z" fill={c} opacity="0.85" />
+      <path d="M 46 35 Q 51 22 56 27 V 41 H 46 Z" fill={c} opacity="0.75" />
       {sparkles("#fde68a")}
     </g>
   ),
   office_wall_shelf: (c) => (
     <g>
-      <path d="M 8 39 H 55 L 51 46 H 12 Z" fill={darkWood} />
+      <path d="M 10 44 H 56 L 52 49 H 13 Z" fill="#020617" opacity="0.13" />
+      <path d="M 8 39 H 56 L 51 46 H 12 Z" fill={darkWood} />
+      <path d="M 10 39 H 56 L 52 42 H 13 Z" fill={wood} />
+      <path
+        d="M 17 39 L 20 46 M 45 39 L 42 46"
+        stroke={darkWood}
+        strokeWidth="2"
+        strokeLinecap="round"
+        opacity="0.5"
+      />
       <rect x="14" y="20" width="8" height="19" rx="2" fill="#ef4444" />
       <rect x="23" y="16" width="7" height="23" rx="2" fill="#3b82f6" />
       <rect x="31" y="23" width="8" height="16" rx="2" fill="#22c55e" />
-      <path d="M 44 39 L 47 27 L 56 27 L 59 39 Z" fill="#ca8a04" />
-      <path d="M 51 28 Q 43 22 46 15 Q 51 20 51 28 Z" fill={c} />
-      <path d="M 51 28 Q 59 21 57 15 Q 52 20 51 28 Z" fill="#86efac" />
+      <path d="M 43 39 L 46 28 L 56 28 L 59 39 Z" fill="#ca8a04" />
+      <path d="M 51 29 Q 43 23 46 16 Q 51 21 51 29 Z" fill={c} />
+      <path d="M 51 29 Q 59 22 57 16 Q 52 21 51 29 Z" fill="#86efac" />
     </g>
   ),
   office_wall_neon_sign: (c) => (
     <g>
-      <rect x="7" y="16" width="50" height="30" rx="9" fill="#0f172a" />
+      <path d="M 10 47 H 55 Q 51 51 15 51 Q 11 50 10 47 Z" fill="#020617" opacity="0.18" />
+      <rect x="7" y="16" width="50" height="30" rx="10" fill="#111827" />
       <rect
         x="10"
         y="19"
         width="44"
         height="24"
-        rx="7"
+        rx="8"
         fill="#020617"
         stroke={c}
         strokeWidth="2"
@@ -412,6 +485,13 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
         opacity="0.75"
       />
       <ellipse cx="32" cy="32" rx="26" ry="14" fill={c} opacity="0.12" />
+      <path
+        d="M 17 23 H 31"
+        stroke="#ffffff"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.2"
+      />
     </g>
   ),
   office_arcade: (c) => (
@@ -538,10 +618,17 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_wall_sconce: (c) => (
     <g>
-      <rect x="24" y="20" width="16" height="24" rx="4" fill="#e2e8f0" />
-      <circle cx="32" cy="29" r="8" fill={c} opacity="0.9" />
-      <ellipse cx="32" cy="29" rx="16" ry="11" fill="#fef9c3" opacity="0.2" />
-      <path d="M 27 39 H 37" stroke={metal} strokeWidth="2" strokeLinecap="round" />
+      <ellipse cx="32" cy="30" rx="22" ry="17" fill="#fef9c3" opacity="0.16" />
+      <rect x="23" y="18" width="18" height="27" rx="7" fill="#ffffff" opacity="0.95" />
+      <rect x="26" y="22" width="12" height="17" rx="5" fill={c} opacity="0.92" />
+      <path d="M 27 40 H 37" stroke={metal} strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M 27 24 H 37"
+        stroke="#ffffff"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
     </g>
   ),
   office_flooring_wood: (c) => (
@@ -577,7 +664,7 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_wallpaper_brick: (c) => (
     <g>
-      <rect x="4" y="16" width="56" height="32" rx="2" fill={c} opacity="0.88" />
+      {wallMount(56, 34, 4, 15, c)}
       {[0, 1, 2].map((row) =>
         [0, 1, 2, 3].map((col) => (
           <rect
@@ -596,7 +683,7 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_wallpaper_neon: (c) => (
     <g>
-      <rect x="4" y="16" width="56" height="32" rx="2" fill="#0f172a" />
+      {wallMount(56, 34, 4, 15, "#0f172a")}
       <path
         d="M 8 20 H 56 M 8 32 H 56 M 8 44 H 56 M 20 16 V 48 M 44 16 V 48"
         stroke={c}
@@ -608,7 +695,7 @@ export const FURNITURE_SPRITES: Record<string, Sprite> = {
   ),
   office_wallpaper_plants: (c) => (
     <g>
-      <rect x="4" y="16" width="56" height="32" rx="2" fill="#14532d" opacity="0.85" />
+      {wallMount(56, 34, 4, 15, "#14532d")}
       <circle cx="16" cy="28" r="8" fill={c} opacity="0.78" />
       <circle cx="48" cy="26" r="10" fill="#22c55e" opacity="0.72" />
       <circle cx="32" cy="38" r="7" fill="#86efac" opacity="0.78" />
