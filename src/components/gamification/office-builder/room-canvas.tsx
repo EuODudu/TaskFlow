@@ -34,8 +34,8 @@ function DropCell({
     <div
       ref={setNodeRef}
       className={cn(
-        "border border-transparent transition-all duration-150",
-        isWall && "bg-white/[0.02]",
+        "border border-white/0 transition-all duration-150",
+        isWall ? "bg-white/[0.025]" : "bg-black/[0.018]",
         activeHighlight === "valid" &&
           "bg-emerald-500/30 border-emerald-400/70 shadow-[inset_0_0_14px_rgba(52,211,153,0.35)]",
         activeHighlight === "invalid" &&
@@ -144,7 +144,7 @@ export function RoomCanvas({
       <div
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
-          background: `radial-gradient(circle at 50% 8%, ${theme.glow}24, transparent 34%), linear-gradient(180deg, ${theme.trim}22 0%, transparent 18%), ${theme.floor}`,
+          background: `radial-gradient(circle at 50% 5%, ${theme.glow}24, transparent 34%), linear-gradient(180deg, ${theme.trim}20 0%, transparent 21%), ${theme.floor}`,
         }}
       />
       <div
@@ -152,7 +152,25 @@ export function RoomCanvas({
         style={{
           height: WALL_HEIGHT_PX,
           background: theme.wall,
-          boxShadow: `inset 0 -28px 38px ${theme.shadow}22, inset 0 1px 0 #ffffff30`,
+          boxShadow: `inset 0 -34px 46px ${theme.shadow}20, inset 0 1px 0 #ffffff30`,
+        }}
+      />
+      <div
+        className="absolute left-0 top-0 z-[1] pointer-events-none"
+        style={{
+          width: 130,
+          height: WALL_HEIGHT_PX + 24,
+          background: `linear-gradient(90deg, ${theme.shadow}26, transparent 78%)`,
+          clipPath: "polygon(0 0, 100% 0, 70% 100%, 0 100%)",
+        }}
+      />
+      <div
+        className="absolute right-0 top-0 z-[1] pointer-events-none"
+        style={{
+          width: 130,
+          height: WALL_HEIGHT_PX + 24,
+          background: `linear-gradient(270deg, ${theme.shadow}24, transparent 78%)`,
+          clipPath: "polygon(0 0, 100% 0, 100% 100%, 30% 100%)",
         }}
       />
       <div
@@ -169,10 +187,25 @@ export function RoomCanvas({
         style={{
           top: WALL_HEIGHT_PX,
           background: `
-              radial-gradient(ellipse at 50% 15%, ${theme.glow}22, transparent 48%),
-              linear-gradient(180deg, rgba(255,255,255,0.10) 0%, transparent 20%, rgba(0,0,0,0.24) 100%),
+              radial-gradient(ellipse at 50% 10%, ${theme.glow}24, transparent 46%),
+              linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 19%, rgba(0,0,0,0.25) 100%),
+              linear-gradient(135deg, rgba(255,255,255,0.12) 0 8%, transparent 8% 16%, rgba(0,0,0,0.08) 16% 24%, transparent 24% 32%, rgba(255,255,255,0.08) 32% 40%, transparent 40% 100%),
               ${theme.floor}
             `,
+        }}
+      />
+      <div
+        className="absolute inset-x-8 z-[1] pointer-events-none rounded-[45%] blur-sm"
+        style={{
+          top: WALL_HEIGHT_PX + 18,
+          height: 180,
+          background: `radial-gradient(ellipse, ${theme.glow}2f, transparent 68%)`,
+        }}
+      />
+      <div
+        className="absolute inset-0 z-[2] pointer-events-none"
+        style={{
+          background: `radial-gradient(circle at 50% 42%, transparent 0 58%, ${theme.shadow}22 100%), linear-gradient(115deg, #ffffff24 0%, transparent 22%, transparent 72%, ${theme.glow}12 100%)`,
         }}
       />
       <AmbientParticles theme={theme} />
@@ -188,7 +221,7 @@ export function RoomCanvas({
 
         {isEditing && (
           <div
-            className="absolute inset-0 grid z-[2]"
+            className="absolute inset-0 grid z-[2] opacity-80"
             style={{
               gridTemplateColumns: `repeat(${GRID_COLS}, ${CELL_SIZE}px)`,
               gridTemplateRows: `repeat(${GRID_ROWS}, ${CELL_SIZE}px)`,
