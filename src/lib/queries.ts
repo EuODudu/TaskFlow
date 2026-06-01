@@ -245,8 +245,6 @@ export function useInvalidate() {
     userInventory: (userId: string) => qc.invalidateQueries({ queryKey: ["user-inventory", userId] }),
     userAvatar: (userId: string) => qc.invalidateQueries({ queryKey: ["user-avatar", userId] }),
     xpEvents: (userId: string) => qc.invalidateQueries({ queryKey: ["xp-events", userId] }),
-    officeItems: (userId: string) => qc.invalidateQueries({ queryKey: ["office-items", userId] }),
-    ownedOfficeItems: (userId: string) => qc.invalidateQueries({ queryKey: ["owned-office-items", userId] }),
     mentalNotes: (userId: string) => qc.invalidateQueries({ queryKey: qk.mentalNotes(userId) }),
     all: () => qc.invalidateQueries(),
   };
@@ -329,6 +327,7 @@ export function useAvatarItems(category?: string) {
     queryFn: async () => {
       let q = supabase.from("avatar_items").select("*").order("price_coins");
       if (category) q = q.eq("category", category);
+      else q = q.not("category", "in", "(office_item,office_theme)");
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
@@ -380,101 +379,6 @@ export function useXpEvents(userId: string | undefined) {
         .limit(50);
       if (error) throw error;
       return data ?? [];
-    },
-  });
-}
-
-// ─── Office queries ──────────────────────────────────────────────────────────
-
-export type OfficeItem = {
-  id: string;
-  item_id: string;
-  grid_x: number;
-  grid_y: number;
-  rotation: number;
-  item: AvatarItem;
-};
-
-export function useOfficeItems(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["office-items", userId ?? ""],
-    enabled: !!userId,
-    queryFn: async () => {
-      // office_items table is added via migration; cast to bypass generated types
-      const { data, error } = await (supabase as any)
-        .from("office_items")
-        .select("*, item:avatar_items(*)")
-        .eq("user_id", userId!);
-      if (error) {
-        if ((error as any).code === "PGRST205" || /office_items/i.test(error.message)) return [];
-        throw error;
-      }
-      return (data ?? []) as OfficeItem[];
-    },
-  });
-}
-
-export function useOwnedOfficeItems(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["owned-office-items", userId ?? ""],
-    enabled: !!userId,
-    queryFn: async () => {
-      const [inventoryRes, defaultsRes] = await Promise.all([
-        supabase
-          .from("user_inventory")
-          .select("item:avatar_items(*)")
-          .eq("user_id", userId!),
-        supabase
-          .from("avatar_items")
-          .select("*")
-          .eq("category", "office_item")
-          .eq("is_default", true),
-      ]);
-      if (inventoryRes.error) throw inventoryRes.error;
-      if (defaultsRes.error) throw defaultsRes.error;
-
-      const map = new Map<string, AvatarItem>();
-      for (const item of defaultsRes.data ?? []) {
-        map.set(item.id, item as AvatarItem);
-      }
-      for (const row of inventoryRes.data ?? []) {
-        const item = (row as any).item as AvatarItem | null;
-        if (item?.category === "office_item") map.set(item.id, item);
-      }
-
-      return Array.from(map.values());
-    },
-  });
-}
-
-export function useOwnedOfficeThemes(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["owned-office-themes", userId ?? ""],
-    enabled: !!userId,
-    queryFn: async () => {
-      const [inventoryRes, defaultsRes] = await Promise.all([
-        supabase
-          .from("user_inventory")
-          .select("item:avatar_items(*)")
-          .eq("user_id", userId!),
-        supabase
-          .from("avatar_items")
-          .select("*")
-          .eq("category", "office_theme")
-          .eq("is_default", true),
-      ]);
-      if (inventoryRes.error) throw inventoryRes.error;
-      if (defaultsRes.error) throw defaultsRes.error;
-
-      const map = new Map<string, AvatarItem>();
-      for (const item of defaultsRes.data ?? []) {
-        map.set(item.id, item as AvatarItem);
-      }
-      for (const row of inventoryRes.data ?? []) {
-        const item = (row as { item: AvatarItem | null }).item;
-        if (item?.category === "office_theme") map.set(item.id, item);
-      }
-      return Array.from(map.values());
     },
   });
 }

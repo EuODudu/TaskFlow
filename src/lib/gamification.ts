@@ -37,17 +37,17 @@ export type ProgressionMilestone = {
   reward: string;
   icon: string;
   rarity: BadgeRarity;
-  category: "skin" | "outfit" | "office" | "badge" | "feature";
+  category: "skin" | "outfit" | "badge" | "feature";
 };
 
 export const PROGRESSION_MILESTONES: ProgressionMilestone[] = [
-  { level: 5,   title: "Primeiro salto",       reward: "Roupas raras e escritório básico",          icon: "💼", rarity: "common",    category: "outfit" },
+  { level: 5,   title: "Primeiro salto",       reward: "Roupas raras e itens de avatar",             icon: "💼", rarity: "common",    category: "outfit" },
   { level: 10,  title: "Foco especializado",   reward: "Skins raras e Operações Sombra",            icon: "🥷", rarity: "rare",      category: "skin" },
-  { level: 15,  title: "Estilo avançado",      reward: "Temas raros e roupas neon",                 icon: "⚡", rarity: "rare",      category: "office" },
-  { level: 20,  title: "Classe lendária",      reward: "Biohacker, Diamante e móveis lendários",    icon: "🧬", rarity: "legendary", category: "skin" },
+  { level: 15,  title: "Estilo avançado",      reward: "Acessórios raros e roupas neon",             icon: "⚡", rarity: "rare",      category: "outfit" },
+  { level: 20,  title: "Classe lendária",      reward: "Biohacker, Diamante e skins lendárias",      icon: "🧬", rarity: "legendary", category: "skin" },
   { level: 25,  title: "Coleção mítica",       reward: "Galáxia Real e visuais cósmicos",            icon: "🪐", rarity: "mythic",    category: "outfit" },
   { level: 30,  title: "Entusiasta supremo",   reward: "Skin mítica Entusiasta da Produtividade",   icon: "🏁", rarity: "mythic",    category: "skin" },
-  { level: 40,  title: "Prestígio visual",     reward: "Coleções exclusivas de escritório",          icon: "🏢", rarity: "legendary", category: "office" },
+  { level: 40,  title: "Prestígio visual",     reward: "Coleções exclusivas de avatar",              icon: "🏆", rarity: "legendary", category: "badge" },
   { level: 50,  title: "Arquiteto do foco",    reward: "Título e aura de progressão",                icon: "🔮", rarity: "legendary", category: "badge" },
   { level: 75,  title: "Titã da execução",     reward: "Itens de prestígio e coleção dragão",        icon: "🐉", rarity: "mythic",    category: "skin" },
   { level: 100, title: "Ícone da produtividade", reward: "Marco máximo, selo e progresso completo", icon: "🌟", rarity: "mythic",    category: "badge" },

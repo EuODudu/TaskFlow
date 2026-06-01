@@ -16,7 +16,6 @@ import { Route as AppStoreRouteImport } from './routes/_app/store'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppRankingsRouteImport } from './routes/_app/rankings'
 import { Route as AppProfileRouteImport } from './routes/_app/profile'
-import { Route as AppOfficeRouteImport } from './routes/_app/office'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppCalendarRouteImport } from './routes/_app/calendar'
 import { Route as AppBoardRouteImport } from './routes/_app/board'
@@ -56,11 +55,6 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
-const AppOfficeRoute = AppOfficeRouteImport.update({
-  id: '/office',
-  path: '/office',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -89,7 +83,6 @@ export interface FileRoutesByFullPath {
   '/board': typeof AppBoardRoute
   '/calendar': typeof AppCalendarRoute
   '/dashboard': typeof AppDashboardRoute
-  '/office': typeof AppOfficeRoute
   '/profile': typeof AppProfileRoute
   '/rankings': typeof AppRankingsRoute
   '/settings': typeof AppSettingsRoute
@@ -102,7 +95,6 @@ export interface FileRoutesByTo {
   '/board': typeof AppBoardRoute
   '/calendar': typeof AppCalendarRoute
   '/dashboard': typeof AppDashboardRoute
-  '/office': typeof AppOfficeRoute
   '/profile': typeof AppProfileRoute
   '/rankings': typeof AppRankingsRoute
   '/settings': typeof AppSettingsRoute
@@ -117,7 +109,6 @@ export interface FileRoutesById {
   '/_app/board': typeof AppBoardRoute
   '/_app/calendar': typeof AppCalendarRoute
   '/_app/dashboard': typeof AppDashboardRoute
-  '/_app/office': typeof AppOfficeRoute
   '/_app/profile': typeof AppProfileRoute
   '/_app/rankings': typeof AppRankingsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -132,7 +123,6 @@ export interface FileRouteTypes {
     | '/board'
     | '/calendar'
     | '/dashboard'
-    | '/office'
     | '/profile'
     | '/rankings'
     | '/settings'
@@ -145,7 +135,6 @@ export interface FileRouteTypes {
     | '/board'
     | '/calendar'
     | '/dashboard'
-    | '/office'
     | '/profile'
     | '/rankings'
     | '/settings'
@@ -159,7 +148,6 @@ export interface FileRouteTypes {
     | '/_app/board'
     | '/_app/calendar'
     | '/_app/dashboard'
-    | '/_app/office'
     | '/_app/profile'
     | '/_app/rankings'
     | '/_app/settings'
@@ -223,13 +211,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/office': {
-      id: '/_app/office'
-      path: '/office'
-      fullPath: '/office'
-      preLoaderRoute: typeof AppOfficeRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -266,7 +247,6 @@ interface AppRouteChildren {
   AppBoardRoute: typeof AppBoardRoute
   AppCalendarRoute: typeof AppCalendarRoute
   AppDashboardRoute: typeof AppDashboardRoute
-  AppOfficeRoute: typeof AppOfficeRoute
   AppProfileRoute: typeof AppProfileRoute
   AppRankingsRoute: typeof AppRankingsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -278,7 +258,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppBoardRoute: AppBoardRoute,
   AppCalendarRoute: AppCalendarRoute,
   AppDashboardRoute: AppDashboardRoute,
-  AppOfficeRoute: AppOfficeRoute,
   AppProfileRoute: AppProfileRoute,
   AppRankingsRoute: AppRankingsRoute,
   AppSettingsRoute: AppSettingsRoute,

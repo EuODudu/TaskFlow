@@ -5,7 +5,7 @@ import { useUI } from "@/lib/stores";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, Moon, Sun, LogOut, Settings as SettingsIcon, Trophy, User as UserIcon, ShoppingBag, Home } from "lucide-react";
+import { Search, Moon, Sun, LogOut, Settings as SettingsIcon, Trophy, User as UserIcon, ShoppingBag } from "lucide-react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { LevelBadge } from "@/components/gamification/level-badge";
 import { Avatar2D } from "@/components/gamification/avatar-2d";
@@ -61,9 +61,6 @@ export function Topbar() {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to="/profile"><UserIcon className="size-4 mr-2" /> Meu Perfil</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/office"><Home className="size-4 mr-2" /> Escritório</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/rankings"><Trophy className="size-4 mr-2" /> Ranking</Link>

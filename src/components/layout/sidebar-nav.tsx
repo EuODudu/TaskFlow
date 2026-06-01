@@ -15,7 +15,6 @@ import {
   ShoppingBag,
   Medal,
   User,
-  Home,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUI } from "@/lib/stores";
@@ -42,7 +41,6 @@ const mainNav = [
 
 const gameNav = [
   { to: "/profile",      label: "Meu Perfil",      icon: User            },
-  { to: "/office",       label: "Escritório",       icon: Home            },
   { to: "/rankings",     label: "Ranking",          icon: Trophy          },
   { to: "/achievements", label: "Conquistas",       icon: Medal           },
   { to: "/store",        label: "Loja",             icon: ShoppingBag     },

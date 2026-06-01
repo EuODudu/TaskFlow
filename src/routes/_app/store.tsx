@@ -2,14 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth";
-import { useProfile, useAvatarItems, useUserInventory, useUserAvatar, useOfficeItems, useInvalidate } from "@/lib/queries";
+import { useProfile, useAvatarItems, useUserInventory, useUserAvatar, useInvalidate } from "@/lib/queries";
 import { getLevelFromXP } from "@/lib/gamification";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ShoppingBag, Lock, CheckCircle2, Coins, Sparkles, Star, Zap, Crown, Gem, Layers, Circle } from "lucide-react";
+import { ShoppingBag, Lock, CheckCircle2, Coins, Sparkles, Star, Zap, Crown, Layers, Circle } from "lucide-react";
 import {
   buildEquipPayload,
   getAccessorySlot,
@@ -22,7 +22,6 @@ import {
 } from "@/lib/avatar-cosmetics";
 import { RarityFrame, RarityBadge, RARITY_STYLES, type ExtendedRarity } from "@/components/gamification/rarity-frame";
 import { Avatar2D } from "@/components/gamification/avatar-2d";
-import { FurnitureSVG } from "@/components/gamification/furniture-sprites";
 import type { AvatarItem, UserAvatar } from "@/lib/queries";
 
 export const Route = createFileRoute("/_app/store")({ component: StorePage });
@@ -35,8 +34,6 @@ const STORE_CATEGORIES = [
   { key: "accessory",    label: "Acessórios",   icon: Star        },
   { key: "aura",         label: "Auras",        icon: Circle      },
   { key: "pet",          label: "Pets",         icon: Zap         },
-  { key: "office_item",  label: "Móveis",       icon: Gem         },
-  { key: "office_theme", label: "Visuais",      icon: Sparkles    },
 ];
 
 const ACCESSORY_SLOT_FILTERS: { key: AccessorySlot | "all"; label: string }[] = [
@@ -58,7 +55,6 @@ function StorePage() {
   const { data: allItems = [], isLoading } = useAvatarItems();
   const { data: ownedIds = [] } = useUserInventory(user?.id);
   const { data: avatar } = useUserAvatar(user?.id);
-  const { data: officeRows = [] } = useOfficeItems(user?.id);
   const inv = useInvalidate();
   const [category, setCategory] = useState("all");
   const [accessorySlot, setAccessorySlot] = useState<AccessorySlot | "all">("all");
@@ -72,7 +68,7 @@ function StorePage() {
 
   const equippedSlugs = getEquippedSlugs(avatar ?? null, allItems);
   const highlightRarity = getHighestEquippedRarity(equippedSlugs, allItems);
-  const visibleItems = allItems.filter((item) => !HIDDEN_STORE_SLUGS.has(item.slug));
+  const visibleItems = allItems.filter((item) => !HIDDEN_STORE_SLUGS.has(item.slug) && !item.category.startsWith("office_"));
 
   const filtered = (() => {
     if (category === "all") return visibleItems;
@@ -89,11 +85,9 @@ function StorePage() {
   })();
 
   const isOwned = (item: AvatarItem) => item.is_default || ownedIds.includes(item.id);
-  const activeOfficeTheme = officeRows.find((row) => row.item?.category === "office_theme")?.item;
   const isEquipable = (item: AvatarItem) =>
-    ["face", "outfit", "accessory", "aura", "pet", "office_theme"].includes(item.category);
+    ["face", "outfit", "accessory", "aura", "pet"].includes(item.category);
   const isEquipped = (item: AvatarItem) => {
-    if (item.category === "office_theme") return (activeOfficeTheme?.slug ?? "office_theme_classic") === item.slug;
     return isAvatarItemEquipped(avatar ?? null, item);
   };
 
@@ -126,8 +120,6 @@ function StorePage() {
 
     setBuying(null);
     inv.userInventory(user.id);
-    inv.ownedOfficeItems(user.id);
-    inv.officeItems(user.id);
     inv.profile();
 
     const rarity = (item.rarity ?? "common") as ExtendedRarity;
@@ -138,35 +130,6 @@ function StorePage() {
 
   const equip = async (item: AvatarItem) => {
     if (!user || !isEquipable(item) || !isOwned(item)) return;
-
-    if (item.category === "office_theme") {
-      const existingThemeIds = officeRows
-        .filter((row) => row.item?.category === "office_theme")
-        .map((row) => row.id);
-
-      if (existingThemeIds.length > 0) {
-        const { error: deleteError } = await (supabase as any)
-          .from("office_items")
-          .delete()
-          .in("id", existingThemeIds);
-        if (deleteError) return toast.error(deleteError.message);
-      }
-
-      if (item.slug !== "office_theme_classic") {
-        const { error: insertError } = await (supabase as any).from("office_items").insert({
-          user_id: user.id,
-          item_id: item.id,
-          grid_x: -1,
-          grid_y: -1,
-          rotation: 0,
-        });
-        if (insertError) return toast.error(insertError.message);
-      }
-
-      inv.officeItems(user.id);
-      toast.success(`${item.name} aplicado no escritório!`);
-      return;
-    }
 
     const payload = buildEquipPayload(user.id, item, avatar ?? null);
 
@@ -211,7 +174,7 @@ function StorePage() {
             <ShoppingBag className="size-6 text-primary" /> Loja
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Customize seu personagem e escritório
+            Customize seu personagem
           </p>
         </div>
 
@@ -459,10 +422,6 @@ function StoreCard({
                   />
                 )}
               </div>
-            ) : item.category === "office_item" || item.category === "office_theme" ? (
-              <div className="size-20 flex items-center justify-center rounded-xl bg-muted/40">
-                <FurnitureSVG item={item} size={58} />
-              </div>
             ) : (
               <div className="size-20 flex items-center justify-center text-5xl">
                 {item.icon}
@@ -492,12 +451,6 @@ function StoreCard({
                         ? "Aura"
                         : "Companheiro"}
               </p>
-            )}
-            {item.category === "office_item" && (
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Escritório</p>
-            )}
-            {item.category === "office_theme" && (
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Visual do Escritório</p>
             )}
             {collection && (
               <p

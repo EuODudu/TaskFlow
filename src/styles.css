@@ -330,42 +330,9 @@
 }
 .float-up { animation: float-up 1.2s ease-out forwards; }
 
-@keyframes office-item-drop {
-  0%   { transform: scale(0.6) translateY(-20px); opacity: 0; }
-  70%  { transform: scale(1.08) translateY(2px); opacity: 1; }
-  100% { transform: scale(1) translateY(0); opacity: 1; }
-}
-.office-item-drop { animation: office-item-drop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
 @keyframes xp-gain {
   0%   { transform: scale(1); }
   40%  { transform: scale(1.15); }
   100% { transform: scale(1); }
 }
 .xp-gain { animation: xp-gain 0.5s ease-out; }
-
-/* Office floor tile pattern */
-.office-floor {
-  background-image:
-    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-  background-size: 64px 64px;
-}
-.office-floor-wood {
-  background-color: #92400e22;
-  background-image:
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 63px,
-      rgba(146, 64, 14, 0.15) 63px,
-      rgba(146, 64, 14, 0.15) 64px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 63px,
-      rgba(146, 64, 14, 0.15) 63px,
-      rgba(146, 64, 14, 0.15) 64px
-    );
-}

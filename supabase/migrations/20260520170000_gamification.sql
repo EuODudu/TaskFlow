@@ -71,7 +71,7 @@ CREATE TABLE public.avatar_items (
   id           UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   slug         TEXT    UNIQUE NOT NULL,
   name         TEXT    NOT NULL,
-  category     TEXT    NOT NULL,    -- face | accessory | pet | office_item
+  category     TEXT    NOT NULL,    -- face | accessory | pet
   icon         TEXT    NOT NULL DEFAULT '✨',
   unlock_level INT     NOT NULL DEFAULT 1,
   price_coins  INT     NOT NULL DEFAULT 0,
@@ -106,18 +106,7 @@ INSERT INTO public.avatar_items (slug, name, category, icon, unlock_level, price
   ('pet_fish',   'Peixinho',    'pet', '🐠', 1,  40,  false, 'common'),
   ('pet_fox',    'Raposa',      'pet', '🦊', 5,  100, false, 'rare'),
   ('pet_robot',  'Robot Pet',   'pet', '🤖', 12, 200, false, 'epic'),
-  ('pet_dragon', 'Dragão',      'pet', '🐲', 20, 500, false, 'legendary'),
-  -- Office items
-  ('office_desk',    'Mesa Básica',     'office_item', '🪑', 1,  0,   true,  'common'),
-  ('office_plant',   'Planta',          'office_item', '🪴', 1,  20,  false, 'common'),
-  ('office_monitor', 'Monitor',         'office_item', '🖥️', 2,  30,  false, 'common'),
-  ('office_laptop',  'Notebook',        'office_item', '💻', 3,  50,  false, 'common'),
-  ('office_coffee',  'Cafeteira',       'office_item', '☕', 1,  40,  false, 'common'),
-  ('office_board',   'Quadro Branco',   'office_item', '📋', 5,  75,  false, 'rare'),
-  ('office_trophy',  'Estante de Troféus','office_item','🏆',8,  100, false, 'rare'),
-  ('office_gaming',  'Setup Gamer',     'office_item', '🎮', 12, 200, false, 'epic'),
-  ('office_rocket',  'Foguete Decorativo','office_item','🚀',15, 300, false, 'epic'),
-  ('office_diamond', 'Diamante Corporativo','office_item','💎',20,500, false, 'legendary');
+  ('pet_dragon', 'Dragão',      'pet', '🐲', 20, 500, false, 'legendary');
 
 -- =========== User Inventory ===========
 CREATE TABLE public.user_inventory (

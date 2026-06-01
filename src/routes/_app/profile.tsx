@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import {
   useProfile, useUserBadges, useBadges, useUserAvatar, useAvatarItems,
-  useUserInventory, useOfficeItems, useXpEvents, useInvalidate,
+  useUserInventory, useXpEvents, useInvalidate,
   type AvatarItem, type UserAvatar,
 } from "@/lib/queries";
 import {
@@ -29,7 +29,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar2D } from "@/components/gamification/avatar-2d";
-import { FurnitureSVG } from "@/components/gamification/furniture-sprites";
 import { LevelBadge } from "@/components/gamification/level-badge";
 import { XPBar } from "@/components/gamification/xp-bar";
 import { RarityBadge, RARITY_STYLES, type ExtendedRarity } from "@/components/gamification/rarity-frame";
@@ -81,7 +80,6 @@ function ProfilePage() {
   const { data: avatar } = useUserAvatar(user?.id);
   const { data: allItems = [] } = useAvatarItems();
   const { data: ownedIds = [] } = useUserInventory(user?.id);
-  const { data: officeRows = [] } = useOfficeItems(user?.id);
   const { data: xpEvents = [] } = useXpEvents(user?.id);
   const inv = useInvalidate();
 
@@ -89,8 +87,7 @@ function ProfilePage() {
   const highlightRarity = getHighestEquippedRarity(equippedSlugs, allItems);
   const collectionBonus = getCollectionBonus(equippedSlugs);
   const accessorySlots = resolveAvatarAccessories(avatar);
-  const activeOfficeTheme = officeRows.find((row) => row.item?.category === "office_theme")?.item;
-  const ownedItems = allItems.filter((item) => (item.is_default || ownedIds.includes(item.id)) && !HIDDEN_INVENTORY_SLUGS.has(item.slug));
+  const ownedItems = allItems.filter((item) => (item.is_default || ownedIds.includes(item.id)) && !HIDDEN_INVENTORY_SLUGS.has(item.slug) && !item.category.startsWith("office_"));
 
   const xp = profile?.xp ?? 0;
   const level = getLevelFromXP(xp);
@@ -109,66 +106,14 @@ function ProfilePage() {
   const [draft, setDraft] = useState<Partial<UserAvatar> & { skin_tone?: string; hair_color?: string; hair_style?: string; pose?: string }>({});
 
   const isEquipableInventoryItem = (item: AvatarItem) =>
-    ["face", "outfit", "accessory", "aura", "pet", "office_theme", "office_item"].includes(item.category);
+    ["face", "outfit", "accessory", "aura", "pet"].includes(item.category);
 
   const isInventoryItemEquipped = (item: AvatarItem) => {
-    if (item.category === "office_theme") return (activeOfficeTheme?.slug ?? "office_theme_classic") === item.slug;
-    if (item.category === "office_item") return officeRows.some((row) => row.item_id === item.id);
     return isAvatarItemEquipped(avatar ?? null, item);
   };
 
   const equipInventoryItem = async (item: AvatarItem) => {
     if (!user || !isEquipableInventoryItem(item)) return;
-
-    if (item.category === "office_item") {
-      const placedOfSameItem = officeRows.find((row) => row.item_id === item.id);
-      if (placedOfSameItem) {
-        toast.info("Esse item já está no escritório.");
-        return;
-      }
-
-      const { error } = await (supabase as any).from("office_items").insert({
-        user_id: user.id,
-        item_id: item.id,
-        grid_x: 0,
-        grid_y: 4,
-        rotation: 0,
-      });
-      if (error) return toast.error(error.message);
-
-      inv.officeItems(user.id);
-      toast.success(`${item.name} adicionado ao escritório!`);
-      return;
-    }
-
-    if (item.category === "office_theme") {
-      const existingThemeIds = officeRows
-        .filter((row) => row.item?.category === "office_theme")
-        .map((row) => row.id);
-
-      if (existingThemeIds.length > 0) {
-        const { error: deleteError } = await (supabase as any)
-          .from("office_items")
-          .delete()
-          .in("id", existingThemeIds);
-        if (deleteError) return toast.error(deleteError.message);
-      }
-
-      if (item.slug !== "office_theme_classic") {
-        const { error: insertError } = await (supabase as any).from("office_items").insert({
-          user_id: user.id,
-          item_id: item.id,
-          grid_x: -1,
-          grid_y: -1,
-          rotation: 0,
-        });
-        if (insertError) return toast.error(insertError.message);
-      }
-
-      inv.officeItems(user.id);
-      toast.success(`${item.name} aplicado no escritório!`);
-      return;
-    }
 
     const payload = buildEquipPayload(user.id, item, avatar ?? null);
     const { error } = await (supabase as any).from("user_avatar").upsert(payload, { onConflict: "user_id" });
@@ -688,7 +633,7 @@ const REASON_LABEL: Record<string, string> = {
   streak_bonus:     "Bônus de streak",
 };
 
-type InventoryCategory = "all" | "face" | "outfit" | "accessory" | "aura" | "pet" | "office_item" | "office_theme";
+type InventoryCategory = "all" | "face" | "outfit" | "accessory" | "aura" | "pet";
 
 const INVENTORY_CATEGORIES: { key: InventoryCategory; label: string }[] = [
   { key: "all", label: "Tudo" },
@@ -697,8 +642,6 @@ const INVENTORY_CATEGORIES: { key: InventoryCategory; label: string }[] = [
   { key: "accessory", label: "Acessórios" },
   { key: "aura", label: "Auras" },
   { key: "pet", label: "Pets" },
-  { key: "office_item", label: "Escritório" },
-  { key: "office_theme", label: "Temas" },
 ];
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -707,8 +650,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   accessory: "Acessório",
   aura: "Aura",
   pet: "Pet",
-  office_item: "Item de escritório",
-  office_theme: "Tema do escritório",
 };
 
 function InventoryTab({
@@ -842,14 +783,7 @@ function InventoryItemCard({
               ? { ...basePreview, pet_emoji: item.slug === "pet_none" ? null : item.icon }
               : null;
 
-  const actionLabel =
-    item.category === "office_item"
-      ? equipped
-        ? "No escritório"
-        : "Colocar"
-      : equipped
-        ? "Equipado"
-        : "Equipar";
+  const actionLabel = equipped ? "Equipado" : "Equipar";
 
   return (
     <div className={cn("rounded-2xl border bg-background/45 p-4 shadow-sm", rarityStyle.border)}>
@@ -867,8 +801,6 @@ function InventoryItemCard({
               highlightRarity={highlightRarity}
               className="scale-110"
             />
-          ) : item.category === "office_item" || item.category === "office_theme" ? (
-            <FurnitureSVG item={item} size={52} />
           ) : (
             <span className="text-4xl">{item.icon}</span>
           )}
