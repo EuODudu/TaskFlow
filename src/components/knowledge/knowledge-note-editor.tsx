@@ -1,19 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Eye, Pencil, Save } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Eye, Link2, Pencil, Save, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   useKnowledgeNode,
   useKnowledgeNodes,
   useInvalidate,
 } from "@/lib/queries";
-import { updateKnowledgeNode } from "@/lib/knowledge/knowledge-api";
+import { deleteKnowledgeNode, updateKnowledgeNode } from "@/lib/knowledge/knowledge-api";
 import { KNOWLEDGE_NODE_TYPES, NODE_TYPE_LABELS, type KnowledgeNodeType } from "@/lib/knowledge/constants";
+import { parseWikiLinks } from "@/lib/knowledge/wiki-links";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { KnowledgeMarkdown } from "./knowledge-markdown";
 import { BacklinksPanel } from "./backlinks-panel";
 import { toast } from "sonner";
@@ -27,6 +40,7 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
   const { data: note, isLoading } = useKnowledgeNode(userId, noteId);
   const { data: allNodes = [] } = useKnowledgeNodes(userId);
   const inv = useInvalidate();
+  const nav = useNavigate();
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -76,6 +90,13 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
       .filter((n) => n.title.toLowerCase().includes(q) || n.slug.includes(q))
       .slice(0, 8);
   }, [allNodes, linkSuggest.open, linkSuggest.query, noteId]);
+
+  const detectedLinks = useMemo(() => {
+    return parseWikiLinks(content).map((ref) => ({
+      ...ref,
+      targetId: noteIdByTitle.get(ref.title.toLowerCase()),
+    }));
+  }, [content, noteIdByTitle]);
 
   const persist = useCallback(
     async (patch: { title?: string; content?: string; node_type?: KnowledgeNodeType }) => {
@@ -174,6 +195,18 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
     toast.success("Salvo");
   };
 
+  const deleteCurrentNote = async () => {
+    if (!userId) return;
+    try {
+      await deleteKnowledgeNode(userId, noteId);
+      inv.knowledge(userId);
+      toast.success("Nota apagada");
+      nav({ to: "/knowledge/notes" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao apagar nota");
+    }
+  };
+
   if (isLoading) return <p className="p-6 text-muted-foreground">Carregando…</p>;
   if (!note) {
     return (
@@ -213,10 +246,32 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" className="ml-auto" onClick={saveNow} disabled={!dirty}>
+        <div className="ml-auto flex items-center gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                <Trash2 className="size-4 mr-1" />
+                Apagar
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Apagar esta nota?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação é definitiva. Links e backlinks ligados a esta nota também serão removidos.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteCurrentNote}>Apagar</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Button size="sm" onClick={saveNow} disabled={!dirty}>
           <Save className="size-4 mr-1" />
           Salvar
-        </Button>
+          </Button>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-[1fr_280px] gap-6">
@@ -296,7 +351,45 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
             </TabsContent>
           </Tabs>
         </div>
-        {userId && <BacklinksPanel userId={userId} noteId={noteId} />}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Link2 className="size-4" />
+                Links desta nota ({detectedLinks.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {detectedLinks.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Use [[Nome da Nota]] no texto para conectar notas.
+                </p>
+              )}
+              {detectedLinks.map((ref) =>
+                ref.targetId ? (
+                  <Link
+                    key={`${ref.raw}-${ref.targetId}`}
+                    to="/knowledge/notes/$noteId"
+                    params={{ noteId: ref.targetId }}
+                    className="block rounded-md border px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="font-medium">{ref.alias ?? ref.title}</span>
+                    <span className="block text-xs text-muted-foreground">{ref.title}</span>
+                  </Link>
+                ) : (
+                  <div
+                    key={ref.raw}
+                    className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+                  >
+                    <span className="font-medium text-foreground">{ref.alias ?? ref.title}</span>
+                    <span className="block text-xs">Será criada como stub no próximo salvamento.</span>
+                  </div>
+                ),
+              )}
+            </CardContent>
+          </Card>
+          {userId && <BacklinksPanel userId={userId} noteId={noteId} />}
+        </div>
       </div>
     </div>
   );

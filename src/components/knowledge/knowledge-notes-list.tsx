@@ -5,12 +5,12 @@ import { useKnowledgeNodes, useInvalidate } from "@/lib/queries";
 import { useUI } from "@/lib/stores";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { createKnowledgeNode, archiveKnowledgeNode } from "@/lib/knowledge/knowledge-api";
+import { deleteKnowledgeNode } from "@/lib/knowledge/knowledge-api";
 import { NODE_TYPE_LABELS } from "@/lib/knowledge/constants";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CreateKnowledgeNoteDialog } from "./create-knowledge-note-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +29,6 @@ export function KnowledgeNotesList() {
   const searchQuery = useUI((s) => s.searchQuery);
   const { data: nodes = [], isLoading } = useKnowledgeNodes(userId);
   const inv = useInvalidate();
-  const nav = useNavigate();
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = q
@@ -41,25 +40,12 @@ export function KnowledgeNotesList() {
       )
     : nodes;
 
-  const createNote = async () => {
+  const deleteNote = async (id: string) => {
     if (!userId) return;
     try {
-      const node = await createKnowledgeNode(userId, { title: "Nova nota" });
+      await deleteKnowledgeNode(userId, id);
       inv.knowledge(userId);
-      inv.profile();
-      toast.success("Nota criada");
-      nav({ to: "/knowledge/notes/$noteId", params: { noteId: node.id } });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-    }
-  };
-
-  const archive = async (id: string) => {
-    if (!userId) return;
-    try {
-      await archiveKnowledgeNode(userId, id);
-      inv.knowledge(userId);
-      toast.success("Nota arquivada");
+      toast.success("Nota apagada");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
     }
@@ -69,10 +55,15 @@ export function KnowledgeNotesList() {
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold">Notas</h1>
-        <Button className="ml-auto" size="sm" onClick={createNote}>
-          <Plus className="size-4 mr-1" />
-          Nova
-        </Button>
+        <CreateKnowledgeNoteDialog
+          buttonLabel="Nova"
+          trigger={
+            <Button className="ml-auto" size="sm">
+              <Plus className="size-4 mr-1" />
+              Nova
+            </Button>
+          }
+        />
       </div>
       {isLoading && <p className="text-muted-foreground text-sm">Carregando…</p>}
       {!isLoading && filtered.length === 0 && (
@@ -108,14 +99,14 @@ export function KnowledgeNotesList() {
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Arquivar nota?</AlertDialogTitle>
+                    <AlertDialogTitle>Apagar nota?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      A nota sairá da lista ativa. Links de outras notas podem ficar órfãos.
+                      Esta ação é definitiva. Links e backlinks ligados a esta nota também serão removidos.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => archive(n.id)}>Arquivar</AlertDialogAction>
+                    <AlertDialogAction onClick={() => deleteNote(n.id)}>Apagar</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

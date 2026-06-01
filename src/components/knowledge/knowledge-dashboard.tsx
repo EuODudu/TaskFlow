@@ -1,36 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { BookOpen, GitBranch, Network, Plus, Sparkles } from "lucide-react";
+import { BookOpen, GitBranch, Network, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useKnowledgeNodes, useKnowledgeStats } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { createKnowledgeNode } from "@/lib/knowledge/knowledge-api";
-import { useInvalidate } from "@/lib/queries";
-import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CreateKnowledgeNoteDialog } from "./create-knowledge-note-dialog";
 
 export function KnowledgeDashboard() {
   const { user } = useAuth();
   const userId = user?.id;
   const { data: stats } = useKnowledgeStats(userId);
   const { data: nodes = [] } = useKnowledgeNodes(userId);
-  const inv = useInvalidate();
-  const nav = useNavigate();
-
-  const createNote = async () => {
-    if (!userId) return;
-    try {
-      const node = await createKnowledgeNode(userId, { title: "Nova nota" });
-      inv.knowledge(userId);
-      inv.profile();
-      toast.success("+20 XP — nota criada");
-      nav({ to: "/knowledge/notes/$noteId", params: { noteId: node.id } });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar nota");
-    }
-  };
 
   const recent = nodes.slice(0, 5);
 
@@ -50,10 +32,7 @@ export function KnowledgeDashboard() {
               Grafo
             </Link>
           </Button>
-          <Button onClick={createNote}>
-            <Plus className="size-4 mr-2" />
-            Nova nota
-          </Button>
+          <CreateKnowledgeNoteDialog successMessage="+20 XP — nota criada" />
         </div>
       </div>
 

@@ -323,6 +323,15 @@ export async function archiveKnowledgeNode(userId: string, id: string): Promise<
   if (error) throw error;
 }
 
+export async function deleteKnowledgeNode(userId: string, id: string): Promise<void> {
+  const { error } = await db
+    .from("knowledge_nodes")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
 export async function searchKnowledgeNodes(
   userId: string,
   query: string,
