@@ -20,6 +20,10 @@ import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppCalendarRouteImport } from './routes/_app/calendar'
 import { Route as AppBoardRouteImport } from './routes/_app/board'
 import { Route as AppAchievementsRouteImport } from './routes/_app/achievements'
+import { Route as AppKnowledgeIndexRouteImport } from './routes/_app/knowledge/index'
+import { Route as AppKnowledgeGraphRouteImport } from './routes/_app/knowledge/graph'
+import { Route as AppKnowledgeNotesIndexRouteImport } from './routes/_app/knowledge/notes/index'
+import { Route as AppKnowledgeNotesNoteIdRouteImport } from './routes/_app/knowledge/notes/$noteId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -75,6 +79,26 @@ const AppAchievementsRoute = AppAchievementsRouteImport.update({
   path: '/achievements',
   getParentRoute: () => AppRoute,
 } as any)
+const AppKnowledgeIndexRoute = AppKnowledgeIndexRouteImport.update({
+  id: '/knowledge/',
+  path: '/knowledge/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppKnowledgeGraphRoute = AppKnowledgeGraphRouteImport.update({
+  id: '/knowledge/graph',
+  path: '/knowledge/graph',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppKnowledgeNotesIndexRoute = AppKnowledgeNotesIndexRouteImport.update({
+  id: '/knowledge/notes/',
+  path: '/knowledge/notes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppKnowledgeNotesNoteIdRoute = AppKnowledgeNotesNoteIdRouteImport.update({
+  id: '/knowledge/notes/$noteId',
+  path: '/knowledge/notes/$noteId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -87,6 +111,10 @@ export interface FileRoutesByFullPath {
   '/rankings': typeof AppRankingsRoute
   '/settings': typeof AppSettingsRoute
   '/store': typeof AppStoreRoute
+  '/knowledge/graph': typeof AppKnowledgeGraphRoute
+  '/knowledge/': typeof AppKnowledgeIndexRoute
+  '/knowledge/notes/$noteId': typeof AppKnowledgeNotesNoteIdRoute
+  '/knowledge/notes/': typeof AppKnowledgeNotesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -99,6 +127,10 @@ export interface FileRoutesByTo {
   '/rankings': typeof AppRankingsRoute
   '/settings': typeof AppSettingsRoute
   '/store': typeof AppStoreRoute
+  '/knowledge/graph': typeof AppKnowledgeGraphRoute
+  '/knowledge': typeof AppKnowledgeIndexRoute
+  '/knowledge/notes/$noteId': typeof AppKnowledgeNotesNoteIdRoute
+  '/knowledge/notes': typeof AppKnowledgeNotesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -113,6 +145,10 @@ export interface FileRoutesById {
   '/_app/rankings': typeof AppRankingsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/store': typeof AppStoreRoute
+  '/_app/knowledge/graph': typeof AppKnowledgeGraphRoute
+  '/_app/knowledge/': typeof AppKnowledgeIndexRoute
+  '/_app/knowledge/notes/$noteId': typeof AppKnowledgeNotesNoteIdRoute
+  '/_app/knowledge/notes/': typeof AppKnowledgeNotesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,6 +163,10 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/settings'
     | '/store'
+    | '/knowledge/graph'
+    | '/knowledge/'
+    | '/knowledge/notes/$noteId'
+    | '/knowledge/notes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -139,6 +179,10 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/settings'
     | '/store'
+    | '/knowledge/graph'
+    | '/knowledge'
+    | '/knowledge/notes/$noteId'
+    | '/knowledge/notes'
   id:
     | '__root__'
     | '/'
@@ -152,6 +196,10 @@ export interface FileRouteTypes {
     | '/_app/rankings'
     | '/_app/settings'
     | '/_app/store'
+    | '/_app/knowledge/graph'
+    | '/_app/knowledge/'
+    | '/_app/knowledge/notes/$noteId'
+    | '/_app/knowledge/notes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -239,6 +287,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAchievementsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/knowledge/': {
+      id: '/_app/knowledge/'
+      path: '/knowledge'
+      fullPath: '/knowledge/'
+      preLoaderRoute: typeof AppKnowledgeIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/knowledge/graph': {
+      id: '/_app/knowledge/graph'
+      path: '/knowledge/graph'
+      fullPath: '/knowledge/graph'
+      preLoaderRoute: typeof AppKnowledgeGraphRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/knowledge/notes/': {
+      id: '/_app/knowledge/notes/'
+      path: '/knowledge/notes'
+      fullPath: '/knowledge/notes/'
+      preLoaderRoute: typeof AppKnowledgeNotesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/knowledge/notes/$noteId': {
+      id: '/_app/knowledge/notes/$noteId'
+      path: '/knowledge/notes/$noteId'
+      fullPath: '/knowledge/notes/$noteId'
+      preLoaderRoute: typeof AppKnowledgeNotesNoteIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -251,6 +327,10 @@ interface AppRouteChildren {
   AppRankingsRoute: typeof AppRankingsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppStoreRoute: typeof AppStoreRoute
+  AppKnowledgeGraphRoute: typeof AppKnowledgeGraphRoute
+  AppKnowledgeIndexRoute: typeof AppKnowledgeIndexRoute
+  AppKnowledgeNotesNoteIdRoute: typeof AppKnowledgeNotesNoteIdRoute
+  AppKnowledgeNotesIndexRoute: typeof AppKnowledgeNotesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -262,6 +342,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppRankingsRoute: AppRankingsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppStoreRoute: AppStoreRoute,
+  AppKnowledgeGraphRoute: AppKnowledgeGraphRoute,
+  AppKnowledgeIndexRoute: AppKnowledgeIndexRoute,
+  AppKnowledgeNotesNoteIdRoute: AppKnowledgeNotesNoteIdRoute,
+  AppKnowledgeNotesIndexRoute: AppKnowledgeNotesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

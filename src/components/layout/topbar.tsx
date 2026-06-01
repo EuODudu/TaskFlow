@@ -33,7 +33,7 @@ export function Topbar() {
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Buscar tarefas, projetos, eventos…"
+          placeholder="Buscar tarefas, notas, eventos…"
           className="pl-10 bg-muted/40 border-transparent focus-visible:bg-background"
         />
       </div>

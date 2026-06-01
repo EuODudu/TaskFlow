@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Medal,
   User,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUI } from "@/lib/stores";
@@ -36,6 +37,7 @@ const mainNav = [
   { to: "/dashboard",    label: "Dashboard",      icon: LayoutDashboard },
   { to: "/board",        label: "Kanban",          icon: KanbanSquare    },
   { to: "/calendar",     label: "Calendário",      icon: Calendar        },
+  { to: "/knowledge",    label: "Conhecimento",    icon: BookOpen        },
   { to: "/settings",     label: "Configurações",   icon: Settings        },
 ];
 

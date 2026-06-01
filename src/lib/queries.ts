@@ -3,6 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { getLevelFromXP } from "@/lib/gamification";
 import { resolveBadgeProgress } from "@/lib/gamification-stats";
+import {
+  fetchKnowledgeNodes,
+  fetchKnowledgeEdges,
+  fetchKnowledgeNodeById,
+  fetchBacklinks,
+  fetchKnowledgeDashboardStats,
+} from "@/lib/knowledge/knowledge-api";
 
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type BoardColumn = Database["public"]["Tables"]["board_columns"]["Row"];
@@ -58,6 +65,11 @@ export const qk = {
   activity: (taskId: string) => ["activity", taskId] as const,
   pomodoroSessions: ["pomodoro-sessions"] as const,
   mentalNotes: (userId: string) => ["mental-notes", userId] as const,
+  knowledgeNodes: (userId: string) => ["knowledge-nodes", userId] as const,
+  knowledgeNode: (userId: string, id: string) => ["knowledge-node", userId, id] as const,
+  knowledgeEdges: (userId: string) => ["knowledge-edges", userId] as const,
+  knowledgeBacklinks: (userId: string, id: string) => ["knowledge-backlinks", userId, id] as const,
+  knowledgeStats: (userId: string) => ["knowledge-stats", userId] as const,
 };
 
 export function useProjects() {
@@ -246,6 +258,13 @@ export function useInvalidate() {
     userAvatar: (userId: string) => qc.invalidateQueries({ queryKey: ["user-avatar", userId] }),
     xpEvents: (userId: string) => qc.invalidateQueries({ queryKey: ["xp-events", userId] }),
     mentalNotes: (userId: string) => qc.invalidateQueries({ queryKey: qk.mentalNotes(userId) }),
+    knowledge: (userId: string) => {
+      qc.invalidateQueries({ queryKey: qk.knowledgeNodes(userId) });
+      qc.invalidateQueries({ queryKey: qk.knowledgeEdges(userId) });
+      qc.invalidateQueries({ queryKey: qk.knowledgeStats(userId) });
+      qc.invalidateQueries({ queryKey: ["knowledge-node", userId] });
+      qc.invalidateQueries({ queryKey: ["knowledge-backlinks", userId] });
+    },
     all: () => qc.invalidateQueries(),
   };
 }
@@ -383,12 +402,55 @@ export function useXpEvents(userId: string | undefined) {
   });
 }
 
+// ─── Knowledge graph ─────────────────────────────────────────────────────────
+
+export function useKnowledgeNodes(userId: string | undefined) {
+  return useQuery({
+    queryKey: qk.knowledgeNodes(userId ?? ""),
+    enabled: !!userId,
+    queryFn: () => fetchKnowledgeNodes(userId!),
+  });
+}
+
+export function useKnowledgeNode(userId: string | undefined, noteId: string | undefined) {
+  return useQuery({
+    queryKey: qk.knowledgeNode(userId ?? "", noteId ?? ""),
+    enabled: !!userId && !!noteId,
+    queryFn: () => fetchKnowledgeNodeById(userId!, noteId!),
+  });
+}
+
+export function useKnowledgeEdges(userId: string | undefined) {
+  return useQuery({
+    queryKey: qk.knowledgeEdges(userId ?? ""),
+    enabled: !!userId,
+    queryFn: () => fetchKnowledgeEdges(userId!),
+  });
+}
+
+export function useKnowledgeBacklinks(userId: string | undefined, noteId: string | undefined) {
+  return useQuery({
+    queryKey: qk.knowledgeBacklinks(userId ?? "", noteId ?? ""),
+    enabled: !!userId && !!noteId,
+    queryFn: () => fetchBacklinks(userId!, noteId!),
+  });
+}
+
+export function useKnowledgeStats(userId: string | undefined) {
+  return useQuery({
+    queryKey: qk.knowledgeStats(userId ?? ""),
+    enabled: !!userId,
+    queryFn: () => fetchKnowledgeDashboardStats(userId!),
+  });
+}
+
 // ─── Badge logic ──────────────────────────────────────────────────────────────
 
 export async function checkAndAwardBadges(
   userId: string,
 ): Promise<Array<{ name: string; icon: string; rarity: string }>> {
-  const [badgesRes, userBadgesRes, profileRes, taskCountRes, pomodoroCountRes, earlyCountRes] =
+  const db = supabase as any;
+  const [badgesRes, userBadgesRes, profileRes, taskCountRes, pomodoroCountRes, earlyCountRes, knowledgeNotesRes, knowledgeLinksRes] =
     await Promise.all([
       supabase.from("badges").select("*"),
       supabase.from("user_badges").select("badge_id").eq("user_id", userId),
@@ -396,6 +458,24 @@ export async function checkAndAwardBadges(
       supabase.from("tasks").select("id", { count: "exact", head: true }).eq("owner_id", userId).eq("status", "done"),
       supabase.from("pomodoro_sessions").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("kind", "focus"),
       supabase.from("xp_events").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("reason", "early_delivery"),
+      (async () => {
+        const { count, error } = await db
+          .from("knowledge_nodes")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .is("archived_at", null);
+        if (error?.code === "PGRST205" || error?.code === "42P01") return { count: 0 };
+        return { count: count ?? 0 };
+      })(),
+      (async () => {
+        const { count, error } = await db
+          .from("knowledge_edges")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("edge_type", "link");
+        if (error?.code === "PGRST205" || error?.code === "42P01") return { count: 0 };
+        return { count: count ?? 0 };
+      })(),
     ]);
 
   const existingIds = new Set((userBadgesRes.data ?? []).map((b) => b.badge_id));
@@ -409,6 +489,8 @@ export async function checkAndAwardBadges(
     pomodoro_sessions: pomodoroCountRes.count ?? 0,
     level: getLevelFromXP(profile.xp),
     xp_total: profile.xp,
+    knowledge_notes: knowledgeNotesRes.count ?? 0,
+    knowledge_links: knowledgeLinksRes.count ?? 0,
   };
 
   const newBadges: Array<{ name: string; icon: string; rarity: string }> = [];
