@@ -33,6 +33,16 @@ import { format } from "date-fns";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
+function compareKanbanTasks(a: Task, b: Task) {
+  const createdDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  if (createdDiff !== 0) return createdDiff;
+  return a.position - b.position;
+}
+
+function sortKanbanTasks(taskList: Task[]) {
+  return [...taskList].sort(compareKanbanTasks);
+}
+
 function getEstimatedTaskReward(task: Task) {
   const priorityReward = {
     low: { xp: 35, coins: 7 },
@@ -99,7 +109,7 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
     filtered.forEach((t) => {
       if (t.column_id && map.has(t.column_id)) map.get(t.column_id)!.push(t);
     });
-    map.forEach((list) => list.sort((a, b) => a.position - b.position));
+    map.forEach((list) => list.sort(compareKanbanTasks));
     return map;
   }, [columns, tasks, searchQuery]);
 
@@ -178,16 +188,16 @@ export function KanbanBoard({ projectId }: { projectId: string }) {
       const moving = next.find((t) => t.id === draggedTask.id);
       if (!moving) return old;
 
-      const sourceTasks = next
-        .filter((t) => t.column_id === activeColumnId && t.id !== moving.id)
-        .sort((a, b) => a.position - b.position);
+      const sourceTasks = sortKanbanTasks(
+        next.filter((t) => t.column_id === activeColumnId && t.id !== moving.id),
+      );
       sourceTasks.forEach((t, i) => {
         t.position = i;
       });
 
-      const targetTasks = next
-        .filter((t) => t.column_id === overColumnId && t.id !== moving.id)
-        .sort((a, b) => a.position - b.position);
+      const targetTasks = sortKanbanTasks(
+        next.filter((t) => t.column_id === overColumnId && t.id !== moving.id),
+      );
       moving.column_id = overColumnId;
       targetTasks.splice(insertIndex, 0, moving);
       targetTasks.forEach((t, i) => {
@@ -395,7 +405,7 @@ function groupTasksByColumn(columns: BoardColumn[], taskList: Task[]) {
   taskList.forEach((t) => {
     if (t.column_id && map.has(t.column_id)) map.get(t.column_id)!.push(t);
   });
-  map.forEach((list) => list.sort((a, b) => a.position - b.position));
+  map.forEach((list) => list.sort(compareKanbanTasks));
   return map;
 }
 
@@ -443,7 +453,7 @@ function ColumnView({
       project_id: projectId,
       column_id: column.id,
       title: newTitle.trim(),
-      position: tasks.length,
+      position: 0,
       status: inferStatus(column),
     });
     if (error) return toast.error(error.message);

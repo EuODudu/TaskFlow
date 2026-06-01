@@ -93,7 +93,7 @@ export function useTasks(projectId: string | undefined) {
         .select("*")
         .eq("project_id", projectId!)
         .is("archived_at", null)
-        .order("position");
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
