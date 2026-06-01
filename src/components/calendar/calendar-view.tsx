@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type BoardColumn, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
 import { findScheduleConflicts, rangesOverlap } from "@/lib/task-schedule";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,6 +129,8 @@ export function CalendarView() {
   const [open, setOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<CalendarEvent | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [copyDay, setCopyDay] = useState<CopyDayState>(() => ({
     sourceDate: format(new Date(), "yyyy-MM-dd"),
     targetDate: format(new Date(), "yyyy-MM-dd"),
@@ -206,9 +209,7 @@ export function CalendarView() {
     const props = info.event.extendedProps;
     if (props.kind === "task") {
       const raw = props.raw as CalendarEvent;
-      toast.info(`Tarefa: ${raw.title}`, {
-        description: "Edite o horário arrastando o bloco ou abra a tarefa no Kanban para mais detalhes.",
-      });
+      setTaskToDelete(raw);
       return;
     }
     const raw = props.raw as CalendarEvent;
@@ -348,6 +349,42 @@ export function CalendarView() {
     await supabase.from("calendar_events").delete().eq("id", editing.id);
     inv.events();
     setOpen(false);
+  };
+
+  const deleteTaskFromCalendar = async () => {
+    if (!taskToDelete) return;
+
+    setDeletingTask(true);
+    try {
+      const linkedTask = taskToDelete.task_id ? taskById.get(taskToDelete.task_id) : undefined;
+      const projectId = linkedTask?.project_id;
+
+      if (taskToDelete.task_id) {
+        const { error: taskError } = await supabase
+          .from("tasks")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", taskToDelete.task_id);
+        if (taskError) throw taskError;
+      }
+
+      const { error: eventError } = await supabase
+        .from("calendar_events")
+        .delete()
+        .eq("id", taskToDelete.id);
+      if (eventError) throw eventError;
+
+      if (projectId) inv.tasks(projectId);
+      else inv.tasks();
+      inv.events();
+      if (taskToDelete.task_id) inv.taskSchedule(taskToDelete.task_id);
+
+      setTaskToDelete(null);
+      toast.success(taskToDelete.task_id ? "Tarefa excluída do Kanban e do calendário" : "Agendamento excluído do calendário");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a tarefa.");
+    } finally {
+      setDeletingTask(false);
+    }
   };
 
   const copyTasksFromDay = async () => {
@@ -742,6 +779,23 @@ export function CalendarView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir tarefa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai remover "{taskToDelete?.title ?? "esta tarefa"}" do calendário e arquivar a tarefa no Kanban.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingTask}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteTaskFromCalendar} disabled={deletingTask}>
+              {deletingTask ? "Excluindo..." : "Excluir tarefa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
