@@ -9,7 +9,7 @@ import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type { EventInput } from "@fullcalendar/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
+import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type BoardColumn, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
 import { findScheduleConflicts, rangesOverlap } from "@/lib/task-schedule";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -81,6 +81,18 @@ function eventPassesFilter(e: CalendarEvent, filters: CalendarFilters) {
   if (e.type === "event") return filters.events;
   if (e.type === "reminder") return filters.reminders;
   return true;
+}
+
+function pickColumnForCopy(columns: BoardColumn[], preferredColumnId: string | null) {
+  if (columns.length === 0) return null;
+  const preferred = preferredColumnId ? columns.find((c) => c.id === preferredColumnId) : undefined;
+  if (preferred && preferred.default_status !== "done") return preferred;
+  return (
+    columns.find((c) => c.default_status === "backlog")
+    ?? columns.find((c) => c.default_status === "todo")
+    ?? columns.find((c) => c.default_status !== "done")
+    ?? columns[0]
+  );
 }
 
 function detectConflicts(events: CalendarEvent[]) {
@@ -346,56 +358,125 @@ export function CalendarView() {
 
     setCopying(true);
 
-    const positionByColumn = new Map<string, number>();
-    for (const task of tasks) {
-      if (!task.column_id) continue;
-      const key = `${task.project_id}:${task.column_id}`;
-      positionByColumn.set(key, Math.max(positionByColumn.get(key) ?? 0, task.position + 1));
-    }
-
     try {
+      const taskLookup = new Map(taskById);
+      const missingTaskIds = tasksToCopy
+        .map((event) => event.task_id)
+        .filter((id): id is string => !!id && !taskLookup.has(id));
+
+      if (missingTaskIds.length > 0) {
+        const { data: fetchedTasks, error: fetchError } = await supabase
+          .from("tasks")
+          .select("*")
+          .in("id", missingTaskIds)
+          .is("archived_at", null);
+        if (fetchError) throw fetchError;
+        for (const task of fetchedTasks ?? []) taskLookup.set(task.id, task);
+      }
+
+      const projectIds = [
+        ...new Set(
+          tasksToCopy
+            .map((event) => (event.task_id ? taskLookup.get(event.task_id)?.project_id : null))
+            .filter((id): id is string => !!id),
+        ),
+      ];
+
+      const columnsByProject = new Map<string, BoardColumn[]>();
+      if (projectIds.length > 0) {
+        const { data: projectColumns, error: columnsError } = await supabase
+          .from("board_columns")
+          .select("*")
+          .in("project_id", projectIds)
+          .order("position");
+        if (columnsError) throw columnsError;
+        for (const column of projectColumns ?? []) {
+          const list = columnsByProject.get(column.project_id) ?? [];
+          list.push(column);
+          columnsByProject.set(column.project_id, list);
+        }
+      }
+
+      const positionByColumn = new Map<string, number>();
+      for (const task of tasks) {
+        if (!task.column_id) continue;
+        const key = `${task.project_id}:${task.column_id}`;
+        positionByColumn.set(key, Math.max(positionByColumn.get(key) ?? 0, task.position + 1));
+      }
+
       let copied = 0;
+      let skipped = 0;
+
       for (const event of tasksToCopy) {
-        const sourceTask = event.task_id ? taskById.get(event.task_id) : undefined;
-        if (!sourceTask) continue;
+        const sourceTask = event.task_id ? taskLookup.get(event.task_id) : undefined;
+        if (!sourceTask) {
+          skipped++;
+          continue;
+        }
+
+        const projectColumns = columnsByProject.get(sourceTask.project_id) ?? [];
+        const targetColumn = pickColumnForCopy(projectColumns, sourceTask.column_id);
+        if (!targetColumn) {
+          skipped++;
+          continue;
+        }
 
         const startsAt = moveDateKeepingLocalTime(event.starts_at, copyDay.targetDate);
         const endsAt = moveDateKeepingLocalTime(event.ends_at, copyDay.targetDate);
-        const columnKey = sourceTask.column_id ? `${sourceTask.project_id}:${sourceTask.column_id}` : null;
-        const nextPosition = columnKey ? positionByColumn.get(columnKey) ?? 0 : sourceTask.position;
-        if (columnKey) positionByColumn.set(columnKey, nextPosition + 1);
+        const columnKey = `${sourceTask.project_id}:${targetColumn.id}`;
+        const nextPosition = positionByColumn.get(columnKey) ?? 0;
+        positionByColumn.set(columnKey, nextPosition + 1);
 
-        const taskPayload: Partial<Task> & Pick<Task, "owner_id" | "project_id" | "title"> = {
+        const plannedFor = dateKey(startsAt);
+        const baseTaskPayload = {
           owner_id: user.id,
           project_id: sourceTask.project_id,
-          column_id: sourceTask.column_id,
+          column_id: targetColumn.id,
           title: sourceTask.title,
           description: sourceTask.description,
           priority: sourceTask.priority,
-          status: sourceTask.status,
+          status: targetColumn.default_status,
           position: nextPosition,
           estimated_minutes: sourceTask.estimated_minutes,
-          due_date: dateKey(startsAt),
-          planned_for: dateKey(startsAt),
-          parent_task_id: sourceTask.parent_task_id,
+          due_date: plannedFor,
           is_favorite: sourceTask.is_favorite,
+          completed_at: null,
         };
 
-        const { data: createdTask, error: taskError } = await supabase
+        let createdTaskId: string | null = null;
+        const firstInsert = await supabase
           .from("tasks")
-          .insert(taskPayload)
+          .insert({ ...baseTaskPayload, planned_for: plannedFor })
           .select("id")
           .single();
-        if (taskError) throw taskError;
+
+        if (firstInsert.error) {
+          const missingPlannedFor =
+            firstInsert.error.code === "PGRST204"
+            || firstInsert.error.code === "42703"
+            || /planned_for/i.test(firstInsert.error.message);
+
+          if (!missingPlannedFor) throw firstInsert.error;
+
+          const fallbackInsert = await supabase
+            .from("tasks")
+            .insert(baseTaskPayload)
+            .select("id")
+            .single();
+          if (fallbackInsert.error) throw fallbackInsert.error;
+          createdTaskId = fallbackInsert.data.id;
+        } else {
+          createdTaskId = firstInsert.data.id;
+        }
 
         const eventPayload = {
           owner_id: user.id,
-          task_id: createdTask.id,
-          title: event.title,
+          task_id: createdTaskId,
+          title: event.title || sourceTask.title,
           starts_at: startsAt.toISOString(),
           ends_at: endsAt.toISOString(),
           type: "task" as const,
-          color: event.color,
+          color: event.color ?? priorityMeta[sourceTask.priority].color,
           notes: event.notes,
           location: event.location,
           all_day: event.all_day,
@@ -408,15 +489,21 @@ export function CalendarView() {
       }
 
       if (copied === 0) {
-        toast.error("Não encontrei tarefas vinculadas ao Kanban nesse dia.");
+        toast.error(
+          skipped > 0
+            ? "Não foi possível copiar: as tarefas não estão vinculadas ao Kanban ou o projeto não tem colunas."
+            : "Não encontrei tarefas vinculadas ao Kanban nesse dia.",
+        );
         return;
       }
 
       inv.events();
-      const projectIds = new Set(tasksToCopy.map((event) => event.task_id ? taskById.get(event.task_id)?.project_id : null).filter(Boolean));
-      projectIds.forEach((projectId) => inv.tasks(projectId as string));
+      projectIds.forEach((projectId) => inv.tasks(projectId));
+      inv.tasks();
+
       setCopyOpen(false);
-      toast.success(`${copied} tarefa(s) copiadas para ${format(new Date(`${copyDay.targetDate}T00:00:00`), "dd/MM")}`);
+      const suffix = skipped > 0 ? ` (${skipped} ignorada(s) sem coluna no Kanban)` : "";
+      toast.success(`${copied} tarefa(s) copiadas para ${format(new Date(`${copyDay.targetDate}T00:00:00`), "dd/MM")}${suffix}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível copiar as tarefas.");
     } finally {
