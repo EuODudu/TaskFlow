@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Eye, Pencil, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -32,14 +32,27 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
   const [content, setContent] = useState("");
   const [nodeType, setNodeType] = useState<KnowledgeNodeType>("note");
   const [dirty, setDirty] = useState(false);
+  const hydratedNoteIdRef = useRef<string | null>(null);
+  const saveSeqRef = useRef(0);
+  const draftRef = useRef({ title: "", content: "", nodeType: "note" as KnowledgeNodeType });
+
+  draftRef.current = { title, content, nodeType };
 
   useEffect(() => {
-    if (!note) return;
+    hydratedNoteIdRef.current = null;
+    setDirty(false);
+  }, [noteId]);
+
+  // Hidrata só na primeira carga de cada nota — nunca após autosave (updated_at).
+  useEffect(() => {
+    if (!note || note.id !== noteId) return;
+    if (hydratedNoteIdRef.current === note.id) return;
+    hydratedNoteIdRef.current = note.id;
     setTitle(note.title);
     setContent(note.content ?? "");
     setNodeType(note.node_type);
     setDirty(false);
-  }, [note?.id, note?.updated_at]);
+  }, [note, noteId]);
 
   const noteIdByTitle = useMemo(() => {
     const m = new Map<string, string>();
@@ -50,12 +63,20 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
   const persist = useCallback(
     async (patch: { title?: string; content?: string; node_type?: KnowledgeNodeType }) => {
       if (!userId) return;
+      const saveSeq = ++saveSeqRef.current;
+      const snapshot = { ...draftRef.current };
       try {
         await updateKnowledgeNode(userId, noteId, patch);
         inv.knowledge(userId);
         inv.profile();
         inv.userBadges(userId);
-        setDirty(false);
+        const latest = draftRef.current;
+        const isLatestSave =
+          saveSeq === saveSeqRef.current &&
+          latest.title === snapshot.title &&
+          latest.content === snapshot.content &&
+          latest.nodeType === snapshot.nodeType;
+        if (isLatestSave) setDirty(false);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar");
       }
@@ -63,17 +84,15 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
     [userId, noteId, inv],
   );
 
-  const debouncedSave = useDebouncedCallback(
-    (t: string, c: string, nt: KnowledgeNodeType) => {
-      void persist({ title: t, content: c, node_type: nt });
-    },
-    1200,
-  );
+  const debouncedSave = useDebouncedCallback(() => {
+    const { title: t, content: c, nodeType: nt } = draftRef.current;
+    void persist({ title: t, content: c, node_type: nt });
+  }, 1200);
 
-  useEffect(() => {
-    if (!dirty || !note || !userId) return;
-    debouncedSave(title, content, nodeType);
-  }, [title, content, nodeType, dirty, debouncedSave, note, userId]);
+  const queueSave = useCallback(() => {
+    setDirty(true);
+    debouncedSave();
+  }, [debouncedSave]);
 
   const saveNow = async () => {
     await persist({ title, content, node_type: nodeType });
@@ -105,7 +124,7 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
           value={nodeType}
           onValueChange={(v) => {
             setNodeType(v as KnowledgeNodeType);
-            setDirty(true);
+            queueSave();
           }}
         >
           <SelectTrigger className="w-36 h-8 text-xs ml-2">
@@ -131,7 +150,7 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
-              setDirty(true);
+              queueSave();
             }}
             className="text-xl font-bold border-0 px-0 shadow-none focus-visible:ring-0"
             placeholder="Título"
@@ -152,7 +171,7 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
                 value={content}
                 onChange={(e) => {
                   setContent(e.target.value);
-                  setDirty(true);
+                  queueSave();
                 }}
                 className="min-h-[420px] font-mono text-sm"
                 placeholder="Markdown + [[Wiki Links]]"
