@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Eye, Pencil, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -35,6 +35,14 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
   const hydratedNoteIdRef = useRef<string | null>(null);
   const saveSeqRef = useRef(0);
   const draftRef = useRef({ title: "", content: "", nodeType: "note" as KnowledgeNodeType });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [linkSuggest, setLinkSuggest] = useState({
+    open: false,
+    query: "",
+    start: 0,
+    cursor: 0,
+    selected: 0,
+  });
 
   draftRef.current = { title, content, nodeType };
 
@@ -59,6 +67,15 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
     for (const n of allNodes) m.set(n.title.toLowerCase(), n.id);
     return m;
   }, [allNodes]);
+
+  const linkSuggestions = useMemo(() => {
+    if (!linkSuggest.open) return [];
+    const q = linkSuggest.query.toLowerCase();
+    return allNodes
+      .filter((n) => n.id !== noteId)
+      .filter((n) => n.title.toLowerCase().includes(q) || n.slug.includes(q))
+      .slice(0, 8);
+  }, [allNodes, linkSuggest.open, linkSuggest.query, noteId]);
 
   const persist = useCallback(
     async (patch: { title?: string; content?: string; node_type?: KnowledgeNodeType }) => {
@@ -93,6 +110,64 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
     setDirty(true);
     debouncedSave();
   }, [debouncedSave]);
+
+  const updateLinkSuggestion = useCallback((value: string, cursor: number) => {
+    const beforeCursor = value.slice(0, cursor);
+    const match = beforeCursor.match(/\[\[([^\]\[\n]*)$/);
+    if (!match) {
+      setLinkSuggest((prev) => (prev.open ? { ...prev, open: false } : prev));
+      return;
+    }
+
+    setLinkSuggest({
+      open: true,
+      query: match[1],
+      start: cursor - match[0].length,
+      cursor,
+      selected: 0,
+    });
+  }, []);
+
+  const insertWikiLink = useCallback(
+    (targetTitle: string) => {
+      const before = content.slice(0, linkSuggest.start);
+      const after = content.slice(linkSuggest.cursor);
+      const inserted = `[[${targetTitle}]]`;
+      const next = `${before}${inserted}${after}`;
+      const nextCursor = before.length + inserted.length;
+      setContent(next);
+      setLinkSuggest((prev) => ({ ...prev, open: false }));
+      queueSave();
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+      });
+    },
+    [content, linkSuggest.cursor, linkSuggest.start, queueSave],
+  );
+
+  const handleEditorKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!linkSuggest.open || linkSuggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setLinkSuggest((prev) => ({
+        ...prev,
+        selected: (prev.selected + 1) % linkSuggestions.length,
+      }));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setLinkSuggest((prev) => ({
+        ...prev,
+        selected: (prev.selected - 1 + linkSuggestions.length) % linkSuggestions.length,
+      }));
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      insertWikiLink(linkSuggestions[linkSuggest.selected]?.title ?? linkSuggestions[0].title);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setLinkSuggest((prev) => ({ ...prev, open: false }));
+    }
+  };
 
   const saveNow = async () => {
     await persist({ title, content, node_type: nodeType });
@@ -167,15 +242,51 @@ export function KnowledgeNoteEditor({ noteId }: Props) {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="edit" className="mt-3">
-              <Textarea
-                value={content}
-                onChange={(e) => {
-                  setContent(e.target.value);
-                  queueSave();
-                }}
-                className="min-h-[420px] font-mono text-sm"
-                placeholder="Markdown + [[Wiki Links]]"
-              />
+              <div className="relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setContent(value);
+                    updateLinkSuggestion(value, e.target.selectionStart);
+                    queueSave();
+                  }}
+                  onClick={(e) => updateLinkSuggestion(content, e.currentTarget.selectionStart)}
+                  onKeyDown={handleEditorKeyDown}
+                  className="min-h-[420px] font-mono text-sm"
+                  placeholder="Markdown + [[Wiki Links]]"
+                />
+                {linkSuggest.open && (
+                  <div className="absolute left-3 top-12 z-20 w-80 rounded-md border bg-popover p-1 shadow-lg">
+                    <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                      Ligar nota
+                    </div>
+                    {linkSuggestions.length === 0 ? (
+                      <div className="px-2 py-2 text-xs text-muted-foreground">
+                        Nenhuma nota encontrada. Ao salvar, este link cria uma nota stub.
+                      </div>
+                    ) : (
+                      linkSuggestions.map((n, index) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            insertWikiLink(n.title);
+                          }}
+                          className={`w-full rounded-sm px-2 py-2 text-left text-sm ${
+                            index === linkSuggest.selected ? "bg-accent text-accent-foreground" : "hover:bg-accent"
+                          }`}
+                        >
+                          <span className="block font-medium truncate">{n.title}</span>
+                          <span className="block text-xs text-muted-foreground truncate">/{n.slug}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Dica: [[Nome da Nota]] ou [[slug|texto exibido]]
               </p>
