@@ -4,15 +4,17 @@ import type { KnowledgeEdge, KnowledgeNode } from "@/lib/knowledge/types";
 import { NODE_TYPE_LABELS } from "@/lib/knowledge/constants";
 
 const TYPE_COLORS: Record<string, string> = {
-  note: "#6366f1",
-  task: "#3b82f6",
-  project: "#10b981",
-  process: "#f59e0b",
-  area: "#a855f7",
-  resource: "#14b8a6",
-  daily: "#ec4899",
-  template: "#94a3b8",
+  note: "#38bdf8",
+  task: "#60a5fa",
+  project: "#34d399",
+  process: "#fb923c",
+  area: "#c084fc",
+  resource: "#2dd4bf",
+  daily: "#f472b6",
+  template: "#cbd5e1",
 };
+
+const NEURAL_EDGE_COLORS = ["#38bdf8", "#818cf8", "#fb7185", "#f97316"];
 
 type Props = {
   nodes: KnowledgeNode[];
@@ -31,6 +33,7 @@ export function KnowledgeGraph({ nodes, edges, onSelectNode, height = 480 }: Pro
     const linkEdges = edges.filter((e) => e.edge_type === "link");
     const elements = [
       ...nodes.map((n) => ({
+        classes: "neuron",
         data: {
           id: n.id,
           label: n.title.length > 24 ? `${n.title.slice(0, 22)}…` : n.title,
@@ -38,9 +41,19 @@ export function KnowledgeGraph({ nodes, edges, onSelectNode, height = 480 }: Pro
           color: TYPE_COLORS[n.node_type] ?? "#6366f1",
         },
       })),
-      ...linkEdges.map((e) => ({
-        data: { id: e.id, source: e.source_id, target: e.target_id },
-      })),
+      ...linkEdges.flatMap((e, index) => {
+        const color = NEURAL_EDGE_COLORS[index % NEURAL_EDGE_COLORS.length];
+        return [
+          {
+            classes: "synapse-glow",
+            data: { id: `${e.id}-glow`, source: e.source_id, target: e.target_id, color },
+          },
+          {
+            classes: "synapse",
+            data: { id: e.id, source: e.source_id, target: e.target_id, color },
+          },
+        ];
+      }),
     ];
 
     cyRef.current?.destroy();
@@ -49,34 +62,89 @@ export function KnowledgeGraph({ nodes, edges, onSelectNode, height = 480 }: Pro
       elements,
       style: [
         {
-          selector: "node",
+          selector: "node.neuron",
           style: {
             label: "data(label)",
-            "text-valign": "center",
+            "text-valign": "bottom",
             "text-halign": "center",
-            "font-size": 10,
-            color: "#fff",
-            "text-outline-width": 2,
-            "text-outline-color": "#1e293b",
-            width: 36,
-            height: 36,
+            "text-margin-y": 9,
+            "font-size": 9,
+            "font-weight": 700,
+            color: "#e0f2fe",
+            "text-outline-width": 3,
+            "text-outline-color": "#020617",
+            width: 34,
+            height: 34,
             "background-color": "data(color)",
+            "background-opacity": 0.95,
+            "border-width": 2,
+            "border-color": "#f8fafc",
+            "border-opacity": 0.55,
+            "shadow-blur": 22,
+            "shadow-color": "data(color)",
+            "shadow-opacity": 0.95,
+            "shadow-offset-x": 0,
+            "shadow-offset-y": 0,
           },
         },
         {
-          selector: "edge",
+          selector: "edge.synapse-glow",
           style: {
-            width: 1.5,
-            "line-color": "#94a3b8",
-            "target-arrow-color": "#94a3b8",
-            "target-arrow-shape": "triangle",
-            "curve-style": "bezier",
-            opacity: 0.7,
+            width: 9,
+            "line-color": "data(color)",
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": "48 -42 24",
+            "control-point-weights": "0.18 0.52 0.82",
+            opacity: 0.18,
+            "line-cap": "round",
+            "line-style": "solid",
           },
         },
-        { selector: "node:selected", style: { "border-width": 3, "border-color": "#fbbf24" } },
+        {
+          selector: "edge.synapse",
+          style: {
+            width: 2,
+            "line-color": "data(color)",
+            "target-arrow-color": "data(color)",
+            "target-arrow-shape": "vee",
+            "target-arrow-fill": "filled",
+            "arrow-scale": 0.75,
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": "48 -42 24",
+            "control-point-weights": "0.18 0.52 0.82",
+            opacity: 0.86,
+            "line-cap": "round",
+          },
+        },
+        {
+          selector: "edge.synapse:selected",
+          style: {
+            width: 3.5,
+            opacity: 1,
+            "line-color": "#f8fafc",
+            "target-arrow-color": "#f8fafc",
+          },
+        },
+        {
+          selector: "node:selected",
+          style: {
+            "border-width": 4,
+            "border-color": "#fbbf24",
+            "shadow-blur": 34,
+            "shadow-color": "#f97316",
+          },
+        },
       ],
-      layout: { name: "cose", animate: true, padding: 40, nodeRepulsion: 8000 },
+      layout: {
+        name: "cose",
+        animate: true,
+        animationDuration: 900,
+        padding: 70,
+        nodeRepulsion: 12000,
+        idealEdgeLength: 130,
+        edgeElasticity: 120,
+        gravity: 0.18,
+      },
       minZoom: 0.2,
       maxZoom: 3,
     });
@@ -106,7 +174,13 @@ export function KnowledgeGraph({ nodes, edges, onSelectNode, height = 480 }: Pro
 
   return (
     <div className="space-y-2">
-      <div ref={containerRef} className="rounded-lg border bg-muted/20 w-full" style={{ height }} />
+      <div className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-slate-950 shadow-2xl shadow-cyan-950/40">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(248,113,113,0.34),transparent_24%),radial-gradient(circle_at_72%_18%,rgba(56,189,248,0.24),transparent_25%),radial-gradient(circle_at_50%_78%,rgba(129,140,248,0.22),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)]" />
+        <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.18)_0_1px,transparent_1px)] [background-size:28px_28px]" />
+        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-orange-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 bottom-8 size-72 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div ref={containerRef} className="relative z-10 w-full" style={{ height }} />
+      </div>
       <p className="text-xs text-muted-foreground">
         Legenda: {Object.entries(NODE_TYPE_LABELS)
           .slice(0, 4)
