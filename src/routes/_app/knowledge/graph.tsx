@@ -33,6 +33,7 @@ function GraphPage() {
       <KnowledgeGraph
         nodes={nodes}
         edges={edges}
+        userId={userId}
         height={560}
         onSelectNode={(id) => nav({ to: "/knowledge/notes/$noteId", params: { noteId: id } })}
       />
