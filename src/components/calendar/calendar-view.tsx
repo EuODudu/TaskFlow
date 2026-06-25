@@ -9,7 +9,8 @@ import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type { EventInput } from "@fullcalendar/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useAllTasks, useColumns, useEvents, useInvalidate, useProjects, priorityMeta, type BoardColumn, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
+import { useAllTasks, useEvents, useInvalidate, useProjects, priorityMeta, type BoardColumn, type CalendarEvent, type Task, type TaskPriority } from "@/lib/queries";
+import { useUI } from "@/lib/stores";
 import { findScheduleConflicts, rangesOverlap } from "@/lib/task-schedule";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -48,17 +49,27 @@ type CopyDayState = {
   targetDate: string;
 };
 
-const emptyEvent = (start?: Date, projectId = ""): Editing => ({
+const emptyEvent = (start?: Date, projectId = "", type: Editing["type"] = "task"): Editing => ({
   title: "",
   starts_at: format(start ?? new Date(), "yyyy-MM-dd'T'HH:mm"),
   ends_at: format(addMinutes(start ?? new Date(), 60), "yyyy-MM-dd'T'HH:mm"),
-  type: "event",
+  type,
   project_id: projectId,
   priority: "medium",
   notes: "",
   location: "",
   recurrence: "none",
 });
+
+function pickTargetColumn(columns: BoardColumn[]) {
+  if (columns.length === 0) return null;
+  return (
+    columns.find((c) => c.default_status === "backlog")
+    ?? columns.find((c) => c.default_status === "todo")
+    ?? columns.find((c) => c.default_status !== "done")
+    ?? columns[0]
+  );
+}
 
 const RRULES: Record<string, string | null> = {
   none: null,
@@ -124,6 +135,7 @@ export function CalendarView() {
   const { data: events = [] } = useEvents();
   const { data: tasks = [] } = useAllTasks();
   const inv = useInvalidate();
+  const setSelectedProjectId = useUI((s) => s.setSelectedProjectId);
   const calRef = useRef<FullCalendar | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [open, setOpen] = useState(false);
@@ -141,8 +153,6 @@ export function CalendarView() {
     events: true,
     reminders: true,
   });
-  const selectedProjectId = editing?.project_id || projects[0]?.id || "";
-  const { data: selectedColumns = [] } = useColumns(selectedProjectId);
 
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
@@ -272,35 +282,64 @@ export function CalendarView() {
     if (endsAt <= startsAt) return toast.error("O horário de fim deve ser depois do início.");
 
     if (editing.type === "task") {
-      if (!selectedProjectId) return toast.error("Crie ou selecione um projeto para adicionar a tarefa ao Kanban.");
-      const targetColumn =
-        selectedColumns.find((c) => c.default_status === "backlog")
-        ?? selectedColumns.find((c) => c.default_status === "todo")
-        ?? selectedColumns[0];
+      const projectId = editing.project_id || projects[0]?.id || "";
+      if (!projectId) return toast.error("Crie ou selecione um projeto para adicionar a tarefa ao Kanban.");
+
+      const { data: projectColumns, error: columnsError } = await supabase
+        .from("board_columns")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("position");
+      if (columnsError) return toast.error(columnsError.message);
+
+      const targetColumn = pickTargetColumn(projectColumns ?? []);
       if (!targetColumn) return toast.error("Crie uma coluna no Kanban antes de adicionar tarefas pelo calendário.");
 
       const durationMinutes = Math.max(15, Math.round((endsAt.getTime() - startsAt.getTime()) / 60000));
-      const columnTasks = tasks.filter((task) => task.project_id === selectedProjectId && task.column_id === targetColumn.id);
-      const { data: createdTask, error: taskError } = await supabase
+      const plannedFor = format(startsAt, "yyyy-MM-dd");
+      const columnTasks = tasks.filter((task) => task.project_id === projectId && task.column_id === targetColumn.id);
+      const baseTaskPayload = {
+        owner_id: user.id,
+        project_id: projectId,
+        column_id: targetColumn.id,
+        title: editing.title.trim() || "Tarefa agendada",
+        priority: editing.priority,
+        status: targetColumn.default_status,
+        position: columnTasks.length,
+        estimated_minutes: durationMinutes,
+        description: editing.notes || null,
+        due_date: plannedFor,
+      };
+
+      let createdTaskId: string | null = null;
+      const firstInsert = await supabase
         .from("tasks")
-        .insert({
-          owner_id: user.id,
-          project_id: selectedProjectId,
-          column_id: targetColumn.id,
-          title: editing.title.trim() || "Tarefa agendada",
-          priority: editing.priority,
-          status: targetColumn.default_status,
-          position: columnTasks.length,
-          estimated_minutes: durationMinutes,
-          description: editing.notes || null,
-        })
+        .insert({ ...baseTaskPayload, planned_for: plannedFor })
         .select("id")
         .single();
-      if (taskError) return toast.error(taskError.message);
+
+      if (firstInsert.error) {
+        const missingPlannedFor =
+          firstInsert.error.code === "PGRST204"
+          || firstInsert.error.code === "42703"
+          || /planned_for/i.test(firstInsert.error.message);
+
+        if (!missingPlannedFor) return toast.error(firstInsert.error.message);
+
+        const fallbackInsert = await supabase
+          .from("tasks")
+          .insert(baseTaskPayload)
+          .select("id")
+          .single();
+        if (fallbackInsert.error) return toast.error(fallbackInsert.error.message);
+        createdTaskId = fallbackInsert.data.id;
+      } else {
+        createdTaskId = firstInsert.data.id;
+      }
 
       const payload = {
         owner_id: user.id,
-        task_id: createdTask.id,
+        task_id: createdTaskId,
         title: editing.title.trim() || "Tarefa agendada",
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
@@ -315,7 +354,8 @@ export function CalendarView() {
         : await supabase.from("calendar_events").insert(payload);
       if (res.error) return toast.error(res.error.message);
 
-      inv.tasks(selectedProjectId);
+      setSelectedProjectId(projectId);
+      inv.tasks(projectId);
       inv.events();
       setOpen(false);
       toast.success("Tarefa criada no Kanban e agendada");
@@ -605,8 +645,26 @@ export function CalendarView() {
             <Copy className="size-3.5" />
             Copiar dia
           </Button>
-          <Button size="sm" className="rounded-full px-4" onClick={() => { setEditing(emptyEvent(undefined, projects[0]?.id)); setOpen(true); }}>
-            + Novo evento
+          <Button
+            size="sm"
+            className="rounded-full px-4"
+            onClick={() => {
+              setEditing(emptyEvent(undefined, projects[0]?.id, "task"));
+              setOpen(true);
+            }}
+          >
+            + Agendar tarefa
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full px-4"
+            onClick={() => {
+              setEditing(emptyEvent(undefined, projects[0]?.id, "event"));
+              setOpen(true);
+            }}
+          >
+            + Evento
           </Button>
         </div>
       </div>
@@ -640,7 +698,15 @@ export function CalendarView() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing?.id ? "Editar evento" : "Novo evento"}</DialogTitle>
+            <DialogTitle>
+              {editing?.type === "task"
+                ? editing?.id
+                  ? "Editar tarefa agendada"
+                  : "Agendar tarefa no Kanban"
+                : editing?.id
+                  ? "Editar evento"
+                  : "Novo evento"}
+            </DialogTitle>
           </DialogHeader>
           {editing && (
             <div className="space-y-3 py-2">
@@ -665,7 +731,10 @@ export function CalendarView() {
                 {editing.type === "task" ? (
                   <div className="space-y-2">
                     <Label>Projeto do Kanban</Label>
-                    <Select value={selectedProjectId} onValueChange={(v) => setEditing({ ...editing, project_id: v })}>
+                    <Select
+                      value={editing.project_id || projects[0]?.id || ""}
+                      onValueChange={(v) => setEditing({ ...editing, project_id: v })}
+                    >
                       <SelectTrigger><SelectValue placeholder="Selecione um projeto" /></SelectTrigger>
                       <SelectContent>
                         {projects.map((project) => (
